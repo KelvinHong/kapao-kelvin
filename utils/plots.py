@@ -72,7 +72,7 @@ class Annotator:
             self.im = im if isinstance(im, Image.Image) else Image.fromarray(im)
             self.draw = ImageDraw.Draw(self.im)
             self.font = check_font(font, size=font_size or max(round(sum(self.im.size) / 2 * 0.035), 12))
-            self.fh = self.font.getsize('a')[1] - 3  # font height
+            self.fh = self.font.getbbox('a')[1] - 3  # font height
         else:  # use cv2
             self.im = im
         self.lw = line_width or max(round(sum(im.shape) / 2 * 0.003), 2)  # line width
@@ -82,7 +82,7 @@ class Annotator:
         if self.pil or not is_ascii(label):
             self.draw.rectangle(box, width=self.lw, outline=color)  # box
             if label:
-                w = self.font.getsize(label)[0]  # text width
+                w = self.font.getbbox(label)[0]  # text width
                 self.draw.rectangle([box[0], box[1] - self.fh, box[0] + w + 1, box[1] + 1], fill=color)
                 self.draw.text((box[0], box[1]), label, fill=txt_color, font=self.font, anchor='ls')
         else:  # cv2
@@ -102,7 +102,7 @@ class Annotator:
 
     def text(self, xy, text, txt_color=(255, 255, 255)):
         # Add text to image (PIL-only)
-        w, h = self.font.getsize(text)  # text width, height
+        w, h = self.font.getbbox(text)[:2]  # text width, height
         self.draw.text((xy[0], xy[1] - h + 1), text, fill=txt_color, font=self.font)
 
     def result(self):
