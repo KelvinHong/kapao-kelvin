@@ -2,10 +2,22 @@ from PIL import Image
 from typing import Tuple, List, Dict
 from torch.utils.data.dataloader import DataLoader
 import os
+from pathlib import Path
 
 # The key for ExifTags Orientation:
 # https://github.com/python-pillow/Pillow/blob/bca693bd82ce1dab40a375d101c5292e3a275143/src/PIL/ExifTags.py#L40
 ORIENTATION_KEY = 0x0112
+IMG_FORMATS = [
+    "bmp",
+    "jpg",
+    "jpeg",
+    "png",
+    "tif",
+    "tiff",
+    "dng",
+    "webp",
+    "mpo",
+]
 
 
 def exif_size(img: Image.Image) -> Tuple[int, int]:
@@ -120,3 +132,25 @@ def img2label_paths(img_paths, image_dir="images", labels_dir="labels"):
         os.path.splitext(s.replace(image_dir, labels_dir))[0] + ".txt"
         for s in img_paths
     ]
+
+
+def extract_images_from_txtfile(path: str | Path) -> List[str]:
+    """Extract image paths from a txt file.
+
+    Args:
+        path (str | Path): Path to the txt file.
+
+    Returns:
+        List[str]: List of image paths.
+    """
+    img_files = []
+    path = Path(path)
+    if not path.is_file():
+        raise ValueError(f"ERROR: {path} is not a file.")
+
+    with open(path, "r") as img_txts:
+        img_files += img_txts.read().strip().splitlines()
+    img_files = sorted(
+        [str(Path(x)) for x in img_files if x.lower().endswith(tuple(IMG_FORMATS))]
+    )
+    return img_files

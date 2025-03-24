@@ -46,21 +46,18 @@ from utils.general import (
     clean_str,
 )
 from utils.torch_utils import torch_distributed_zero_first
-from kapao.dataset import exif_size, InfiniteDataLoader, img2label_paths, convert_flip
+from kapao.dataset import (
+    exif_size,
+    InfiniteDataLoader,
+    img2label_paths,
+    convert_flip,
+    extract_images_from_txtfile,
+    IMG_FORMATS,
+)
 
 # Parameters
 HELP_URL = "https://github.com/ultralytics/yolov5/wiki/Train-Custom-Data"
-IMG_FORMATS = [
-    "bmp",
-    "jpg",
-    "jpeg",
-    "png",
-    "tif",
-    "tiff",
-    "dng",
-    "webp",
-    "mpo",
-]  # acceptable image suffixes
+
 VID_FORMATS = [
     "mov",
     "avi",
@@ -415,7 +412,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         )  # load 4 images at a time into a mosaic (only during training)
         self.mosaic_border = [-img_size // 2, -img_size // 2]
         self.stride = stride
-        self.path = path
+        self.path = Path(path)
         self.albumentations = Albumentations() if augment else None
         self.kp_flip = kp_flip
         self.kp_bbox = kp_bbox
@@ -423,44 +420,15 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
 
         self.obj_flip = None if self.kp_flip is None else convert_flip(self.kp_flip)
 
-        try:
-            image_files = []  # image files
-            for p in path if isinstance(path, list) else [path]:
-                p = Path(p)  # os-agnostic
-                if p.is_dir():
-                    # TODO: This doesn't hit during training, we can remove it if confirmed.
-                    image_files += glob.glob(str(p / "**" / "*.*"), recursive=True)
-                elif p.is_file():  # file
-                    with open(p, "r") as t:
-                        t = t.read().strip().splitlines()
-                        parent = str(p.parent) + os.sep
-                        image_files += [
-                            x.replace("./", parent) if x.startswith("./") else x
-                            for x in t
-                        ]  # local to global path
-                else:
-                    raise Exception(f"{prefix}{p} does not exist")
-            self.img_files = sorted(
-                [
-                    x.replace("/", os.sep)
-                    for x in image_files
-                    if x.split(".")[-1].lower() in IMG_FORMATS
-                ]
-            )
-            # self.img_files = sorted([x for x in f if x.suffix[1:].lower() in img_formats])  # pathlib
-            assert self.img_files, f"{prefix}No images found"
-        except Exception as e:
-            raise Exception(
-                f"{prefix}Error loading data from {path}: {e}\nSee {HELP_URL}"
-            )
+        self.img_files = extract_images_from_txtfile(self.path)
+        if len(self.img_files) == 0:
+            raise ValueError(f"{prefix}No images found")
 
         # Check cache
         self.label_files = img2label_paths(
             self.img_files, labels_dir=self.labels_dir
         )  # labels
-        cache_path = (
-            p if p.is_file() else Path(self.label_files[0]).parent
-        ).with_suffix(".cache")
+        cache_path = self.path.with_suffix(".cache")
         try:
             cache, exists = (
                 np.load(cache_path, allow_pickle=True).item(),
@@ -710,9 +678,6 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                     if self.obj_flip:
                         for i, cls in enumerate(labels[:, 0]):
                             labels[i, 0] = self.obj_flip[labels[i, 0]]
-
-            # Cutouts
-            # labels = cutout(img, labels, p=0.5)
 
         # img_h, img_w = img.shape[:2]
         # img = img.copy()
