@@ -1,0 +1,16 @@
+data/datasets/coco/images/train2017/000000121181.jpg
+data/datasets/coco/images/train2017/000000223086.jpg
+data/datasets/coco/images/train2017/000000409173.jpg
+data/datasets/coco/images/train2017/000000274012.jpg
+data/datasets/coco/images/train2017/000000190964.jpg
+data/datasets/coco/images/train2017/000000027731.jpg
+data/datasets/coco/images/train2017/000000126995.jpg
+data/datasets/coco/images/train2017/000000301651.jpg
+data/datasets/coco/images/train2017/000000427749.jpg
+data/datasets/coco/images/train2017/000000062958.jpg
+data/datasets/coco/images/train2017/000000250350.jpg
+data/datasets/coco/images/train2017/000000477392.jpg
+data/datasets/coco/images/train2017/000000242008.jpg
+data/datasets/coco/images/train2017/000000265444.jpg
+data/datasets/coco/images/train2017/000000476993.jpg
+data/datasets/coco/images/train2017/000000286939.jpg

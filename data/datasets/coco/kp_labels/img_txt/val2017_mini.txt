@@ -1,0 +1,16 @@
+data/datasets/coco/images/val2017/000000415727.jpg
+data/datasets/coco/images/val2017/000000010977.jpg
+data/datasets/coco/images/val2017/000000283113.jpg
+data/datasets/coco/images/val2017/000000477441.jpg
+data/datasets/coco/images/val2017/000000286908.jpg
+data/datasets/coco/images/val2017/000000398652.jpg
+data/datasets/coco/images/val2017/000000169076.jpg
+data/datasets/coco/images/val2017/000000040083.jpg
+data/datasets/coco/images/val2017/000000551822.jpg
+data/datasets/coco/images/val2017/000000061747.jpg
+data/datasets/coco/images/val2017/000000024919.jpg
+data/datasets/coco/images/val2017/000000236426.jpg
+data/datasets/coco/images/val2017/000000082696.jpg
+data/datasets/coco/images/val2017/000000006012.jpg
+data/datasets/coco/images/val2017/000000163746.jpg
+data/datasets/coco/images/val2017/000000446207.jpg
