@@ -43,15 +43,7 @@ for orientation in ExifTags.TAGS.keys():
         break
 
 
-def get_hash(paths):
-    # Returns a single hash value of a list of paths (files or dirs)
-    size = sum(os.path.getsize(p) for p in paths if os.path.exists(p))  # sizes
-    h = hashlib.md5(str(size).encode())  # hash sizes
-    h.update(''.join(paths).encode())  # hash paths
-    return h.hexdigest()  # return hash
-
-
-def exif_size(img):
+def exif_size(img: Image.Image):
     # Returns exif-corrected PIL size
     s = img.size  # (width, height)
     try:
@@ -427,7 +419,6 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         cache_path = (p if p.is_file() else Path(self.label_files[0]).parent).with_suffix('.cache')
         try:
             cache, exists = np.load(cache_path, allow_pickle=True).item(), True  # load dict
-            assert cache['version'] == 0.4 and cache['hash'] == get_hash(self.label_files + self.img_files)
         except:
             cache, exists = self.cache_labels(cache_path, prefix), False  # cache
 
@@ -441,7 +432,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         assert nf > 0 or not augment, f'{prefix}No labels in {cache_path}. Can not train without labels. See {HELP_URL}'
 
         # Read cache
-        [cache.pop(k) for k in ('hash', 'version', 'msgs')]  # remove items
+        [cache.pop(k) for k in ('version', 'msgs')]  # remove items
         labels, shapes, self.segments = zip(*cache.values())
         self.labels = list(labels)
         self.shapes = np.array(shapes, dtype=np.float64)
@@ -528,7 +519,6 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             logging.info('\n'.join(msgs))
         if nf == 0:
             logging.info(f'{prefix}WARNING: No labels found in {path}. See {HELP_URL}')
-        x['hash'] = get_hash(self.label_files + self.img_files)
         x['results'] = nf, nm, ne, nc, len(self.img_files)
         x['msgs'] = msgs  # warnings
         x['version'] = 0.4  # cache version
