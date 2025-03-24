@@ -1,6 +1,6 @@
 
 from PIL import Image
-from typing import Tuple
+from typing import Tuple, List, Dict
 from torch.utils.data.dataloader import DataLoader
 import os
 
@@ -60,6 +60,24 @@ def exif_transpose(image: Image.Image) -> Image.Image:
             del exif[ORIENTATION_KEY]
             image.info["exif"] = exif.tobytes()
     return image
+
+
+def convert_flip(kp_flip: List[int]) -> Dict[int, int]:
+    """Convert keypoint flip to also include superobject information.
+    Consider id 0 as superobject.
+    Example: [1, 0, 3, 2] -> {0:0, 1:2, 2:1, 3:4, 4:3}
+
+    Args:
+        kp_flip (List[int]): Keypoint flip info.
+
+    Returns:
+        Dict[int, int]: Keypoint flip with superobject info.
+    """
+    object_flip = {0: 0}  # Means superobject doesn't flip.
+    for i in range(len(kp_flip)):
+        object_flip[i + 1] = kp_flip[i] + 1
+
+    return object_flip
 
 
 class InfiniteDataLoader(DataLoader):

@@ -307,12 +307,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         self.kp_bbox = kp_bbox
         self.num_coords = len(kp_flip) * 2
 
-        if self.kp_flip:
-            self.obj_flip = {0: 0}
-            for i in range(len(self.kp_flip)):
-                self.obj_flip[i + 1] = self.kp_flip[i] + 1
-        else:
-            self.obj_flip = None
+        self.obj_flip = None if self.kp_flip is None else convert_flip(self.kp_flip)
 
         try:
             f = []  # image files
