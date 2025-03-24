@@ -30,7 +30,7 @@ from utils.augmentations import Albumentations, augment_hsv, copy_paste, letterb
 from utils.general import check_requirements, check_file, check_dataset, xywh2xyxy, xywhn2xyxy, xyxy2xywhn, \
     xyn2xy, segments2boxes, clean_str
 from utils.torch_utils import torch_distributed_zero_first
-from kapao.dataset import exif_size, InfiniteDataLoader
+from kapao.dataset import exif_size, InfiniteDataLoader, img2label_paths
 
 # Parameters
 HELP_URL = 'https://github.com/ultralytics/yolov5/wiki/Train-Custom-Data'
@@ -286,8 +286,6 @@ class LoadStreams:  # multiple IP or RTSP cameras
         return len(self.sources)  # 1E12 frames = 32 streams at 30 FPS for 30 years
 
 
-def img2label_paths(img_paths, image_dir='images', labels_dir='labels'):
-    return [os.path.splitext(s.replace(image_dir, labels_dir))[0] + '.txt' for s in img_paths]
 
 
 class LoadImagesAndLabels(Dataset):  # for training/testing

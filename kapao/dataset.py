@@ -2,7 +2,7 @@
 from PIL import Image
 from typing import Tuple
 from torch.utils.data.dataloader import DataLoader
-
+import os
 
 # The key for ExifTags Orientation: 
 # https://github.com/python-pillow/Pillow/blob/bca693bd82ce1dab40a375d101c5292e3a275143/src/PIL/ExifTags.py#L40
@@ -94,3 +94,7 @@ class _RepeatSampler(object):
     def __iter__(self):
         while True:
             yield from iter(self.sampler)
+
+
+def img2label_paths(img_paths, image_dir='images', labels_dir='labels'):
+    return [os.path.splitext(s.replace(image_dir, labels_dir))[0] + '.txt' for s in img_paths]
