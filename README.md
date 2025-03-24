@@ -2,15 +2,15 @@
 
 [Accepted to ECCV 2022](https://arxiv.org/abs/2111.08557)
 
-KAPAO is an efficient single-stage multi-person human pose estimation method that models 
+KAPAO is an efficient single-stage multi-person human pose estimation method that models
 **k**eypoints **a**nd **p**oses **a**s **o**bjects within a dense anchor-based detection framework.
 KAPAO simultaneously detects _pose objects_ and _keypoint objects_ and fuses the detections to predict human poses:
 
 ![alt text](./res/kapao_inference.gif)
 
-When not using test-time augmentation (TTA), KAPAO is much faster and more accurate than 
-previous single-stage methods like 
-[DEKR](https://github.com/HRNet/DEKR), 
+When not using test-time augmentation (TTA), KAPAO is much faster and more accurate than
+previous single-stage methods like
+[DEKR](https://github.com/HRNet/DEKR),
 [HigherHRNet](https://github.com/HRNet/HigherHRNet-Human-Pose-Estimation),
 [HigherHRNet + SWAHR](https://github.com/greatlog/SWAHR-HumanPose), and
 [CenterGroup](https://github.com/dvl-tum/center-group):
@@ -46,13 +46,13 @@ To generate the four images in the GIF above:
 4. `$ python demos/image.py --pose --face`
 
 #### Shuffling Video
-KAPAO runs fastest on low resolution video with few people in the frame. This demo runs KAPAO-S on a single-person 480p dance video using an input size of 1024. 
+KAPAO runs fastest on low resolution video with few people in the frame. This demo runs KAPAO-S on a single-person 480p dance video using an input size of 1024.
 The inference speed is **~9.5 FPS** on our CPU, and **~60 FPS** on our TITAN Xp.
 
 **CPU inference:**<br>
 ![alt text](./res/yBZ0Y2t0ceo_480p_kapao_s_coco_cpu.gif)<br>
 
-To display the results in real-time: <br> 
+To display the results in real-time: <br>
 `$ python demos/video.py --face --display`
 
 To create the GIF above:<br>
@@ -71,7 +71,7 @@ This demo runs KAPAO-S on a 720p flash mob video using an input size of 1280.
 **GPU inference:**<br>
 ![alt text](./res/2DiQUX11YaY_720p_kapao_s_coco_gpu.gif)<br>
 
-To display the results in real-time: <br> 
+To display the results in real-time: <br>
 `$ python demos/video.py --yt-id 2DiQUX11YaY --tag 136 --imgsz 1280 --color 255 0 255 --start 188 --end 196 --display`
 
 To create the GIF above:<br>
@@ -100,7 +100,7 @@ This demo runs KAPAO-S on a 1080p slow motion squash video. It uses a simple pla
 **GPU inference:**<br>
 ![alt text](./res/squash_inference_kapao_s_coco.gif)<br>
 
-To display the inference results in real-time: <br> 
+To display the inference results in real-time: <br>
 `$ python demos/squash.py --display --fps`
 
 To create the GIF above:<br>
@@ -109,8 +109,8 @@ To create the GIF above:<br>
 ---
 
 #### Depth Video
-Pose objects generalize well and can even be detected in depth video. 
-Here KAPAO-S was run on a depth video from a [fencing action recognition dataset](https://ieeexplore.ieee.org/abstract/document/8076041?casa_token=Zvm7dLIr1rYAAAAA:KrqtVl3NXrJZn05Eb4KGMio-18VPHc3uyDJZSiNJyI7f7oHQ5V2iwB7bK4mCJCmN83NrRl4P). 
+Pose objects generalize well and can even be detected in depth video.
+Here KAPAO-S was run on a depth video from a [fencing action recognition dataset](https://ieeexplore.ieee.org/abstract/document/8076041?casa_token=Zvm7dLIr1rYAAAAA:KrqtVl3NXrJZn05Eb4KGMio-18VPHc3uyDJZSiNJyI7f7oHQ5V2iwB7bK4mCJCmN83NrRl4P).
 
 ![alt text](./res/2016-01-04_21-33-35_Depth_kapao_s_coco_gpu.gif)<br>
 
@@ -121,7 +121,7 @@ To create the GIF above:<br>
 ---
 
 #### Web Demo
-A web demo was integrated to [Huggingface Spaces](https://huggingface.co/spaces) with [Gradio](https://github.com/gradio-app/gradio) (credit to [@AK391](https://github.com/AK391)). 
+A web demo was integrated to [Huggingface Spaces](https://huggingface.co/spaces) with [Gradio](https://github.com/gradio-app/gradio) (credit to [@AK391](https://github.com/AK391)).
 It uses KAPAO-S to run CPU inference on short video clips.
 
 
@@ -136,16 +136,16 @@ Download the COCO dataset:  `$ sh data/scripts/get_coco_kp.sh`
 ### Validation (with TTA)
 - KAPAO-S (64.3 AP): `$ python val.py --scales 0.8 1 1.2 --flips -1 3 -1`
 - KAPAO-M (69.6 AP): `$ python val.py --weights kapao_m_coco.pt \ `<br>
-`--scales 0.8 1 1.2 --flips -1 3 -1` 
+`--scales 0.8 1 1.2 --flips -1 3 -1`
 - KAPAO-L (71.6 AP): `$ python val.py --weights kapao_l_coco.pt \ `<br>
-`--scales 0.8 1 1.2 --flips -1 3 -1` 
+`--scales 0.8 1 1.2 --flips -1 3 -1`
 
 ### Testing
-- KAPAO-S (63.8 AP): `$ python val.py --scales 0.8 1 1.2 --flips -1 3 -1 --task test` 
+- KAPAO-S (63.8 AP): `$ python val.py --scales 0.8 1 1.2 --flips -1 3 -1 --task test`
 - KAPAO-M (68.8 AP): `$ python val.py --weights kapao_m_coco.pt \ `<br>
-`--scales 0.8 1 1.2 --flips -1 3 -1 --task test` 
+`--scales 0.8 1 1.2 --flips -1 3 -1 --task test`
 - KAPAO-L (70.3 AP): `$ python val.py --weights kapao_l_coco.pt \ `<br>
-`--scales 0.8 1 1.2 --flips -1 3 -1 --task test` 
+`--scales 0.8 1 1.2 --flips -1 3 -1 --task test`
 
 
 ### Training
@@ -209,15 +209,15 @@ python train.py \
 
 ### Testing
 - KAPAO-S (63.8 AP): `$ python val.py --data crowdpose.yaml \ `<br>
-`--weights kapao_s_crowdpose.pt --scales 0.8 1 1.2 --flips -1 3 -1` 
+`--weights kapao_s_crowdpose.pt --scales 0.8 1 1.2 --flips -1 3 -1`
 - KAPAO-M (67.1 AP): `$ python val.py --data crowdpose.yaml \ `<br>
 `--weights kapao_m_crowdpose.pt --scales 0.8 1 1.2 --flips -1 3 -1`
 - KAPAO-L (68.9 AP): `$ python val.py --data crowdpose.yaml \ `<br>
 `--weights kapao_l_crowdpose.pt --scales 0.8 1 1.2 --flips -1 3 -1`
 
 ### Training
-The following commands were used to train the KAPAO models on 4 V100s with 32GB memory each. 
-Training was performed on the `trainval` split with no validation. 
+The following commands were used to train the KAPAO models on 4 V100s with 32GB memory each.
+Training was performed on the `trainval` split with no validation.
 The test results above were generated using the last model checkpoint.
 
 KAPAO-S:
@@ -270,8 +270,8 @@ python train.py \
 ```
 
 ## Acknowledgements
-This work was supported in part by Compute Canada, the Canada Research Chairs Program, 
-the Natural Sciences and Engineering Research Council of Canada, 
+This work was supported in part by Compute Canada, the Canada Research Chairs Program,
+the Natural Sciences and Engineering Research Council of Canada,
 a Microsoft Azure Grant, and an NVIDIA Hardware Grant.
 
 If you find this repo is helpful in your research, please cite our paper:
