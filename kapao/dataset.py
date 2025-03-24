@@ -33,7 +33,7 @@ def exif_size(img: Image.Image) -> Tuple[int, int]:
         https://sirv.com/help/articles/rotate-photos-to-be-upright
     """
     shape = img.size
-    exif = img._getexif()
+    exif = img.getexif()
     if exif is not None and isinstance(exif, dict):
         rotation = dict(exif.items())[ORIENTATION_KEY]
         if rotation == 6:  # rotation 270
