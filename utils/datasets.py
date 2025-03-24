@@ -425,23 +425,18 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             raise ValueError(f"{prefix}No images found")
 
         # Check cache
-        self.label_files = img2label_paths(
-            self.img_files, labels_dir=self.labels_dir
-        )  # labels
-        cache_path = self.path.with_suffix(".cache")
-        try:
-            cache, exists = (
-                np.load(cache_path, allow_pickle=True).item(),
-                True,
-            )  # load dict
-        except:
-            cache, exists = self.cache_labels(cache_path, prefix), False  # cache
+        self.label_files = img2label_paths(self.img_files, labels_dir=self.labels_dir)
+        cache_path: Path = self.path.with_suffix(".cache")
+        if cache_path.is_file():
+            cache, cache_exists = np.load(cache_path, allow_pickle=True).item(), True
+        else:
+            cache, cache_exists = self.cache_labels(cache_path, prefix), False
 
         # Display cache
         nf, nm, ne, nc, n = cache.pop(
             "results"
         )  # found, missing, empty, corrupted, total
-        if exists:
+        if cache_exists:
             d = f"Scanning '{cache_path}' images and labels... {nf} found, {nm} missing, {ne} empty, {nc} corrupted"
             tqdm(None, desc=prefix + d, total=n, initial=n)  # display cache results
             if cache["msgs"]:
