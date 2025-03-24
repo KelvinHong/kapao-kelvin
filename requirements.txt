@@ -33,3 +33,6 @@ thop~=0.1.1  # FLOPs computation
 
 # inference demos
 # git+https://github.com/baxterisme/pytube  # patched pytube
+
+### Code Quality and Unit Tests
+pre-commit~=4.2.0

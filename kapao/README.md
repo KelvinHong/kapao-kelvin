@@ -4,7 +4,7 @@ This is a KAPAO refactor that works on `Python 3.12.8`
 
 ## Setup
 
-Using `uv`, 
+Using `uv`,
 
 ```console
 uv venv --python 3.12.8

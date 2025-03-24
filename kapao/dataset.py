@@ -1,12 +1,12 @@
-
 from PIL import Image
 from typing import Tuple, List, Dict
 from torch.utils.data.dataloader import DataLoader
 import os
 
-# The key for ExifTags Orientation: 
+# The key for ExifTags Orientation:
 # https://github.com/python-pillow/Pillow/blob/bca693bd82ce1dab40a375d101c5292e3a275143/src/PIL/ExifTags.py#L40
 ORIENTATION_KEY = 0x0112
+
 
 def exif_size(img: Image.Image) -> Tuple[int, int]:
     """Return Exif corrected image size.
@@ -16,7 +16,7 @@ def exif_size(img: Image.Image) -> Tuple[int, int]:
 
     Returns:
         Tuple[int, int]: Correct image size in (width, height).
-        
+
     References:
         https://sirv.com/help/articles/rotate-photos-to-be-upright
     """
@@ -47,14 +47,15 @@ def exif_transpose(image: Image.Image) -> Image.Image:
     default_orientation_key = 1
     orientation = exif.get(ORIENTATION_KEY, default_orientation_key)
     if orientation != default_orientation_key:
-        method = {2: Image.FLIP_LEFT_RIGHT,
-                  3: Image.ROTATE_180,
-                  4: Image.FLIP_TOP_BOTTOM,
-                  5: Image.TRANSPOSE,
-                  6: Image.ROTATE_270,
-                  7: Image.TRANSVERSE,
-                  8: Image.ROTATE_90,
-                  }.get(orientation)
+        method = {
+            2: Image.FLIP_LEFT_RIGHT,
+            3: Image.ROTATE_180,
+            4: Image.FLIP_TOP_BOTTOM,
+            5: Image.TRANSPOSE,
+            6: Image.ROTATE_270,
+            7: Image.TRANSVERSE,
+            8: Image.ROTATE_90,
+        }.get(orientation)
         if method is not None:
             image = image.transpose(method)
             del exif[ORIENTATION_KEY]
@@ -81,14 +82,14 @@ def convert_flip(kp_flip: List[int]) -> Dict[int, int]:
 
 
 class InfiniteDataLoader(DataLoader):
-    """ Dataloader that reuses workers
+    """Dataloader that reuses workers
 
     Uses same syntax as vanilla DataLoader
     """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        object.__setattr__(self, 'batch_sampler', _RepeatSampler(self.batch_sampler))
+        object.__setattr__(self, "batch_sampler", _RepeatSampler(self.batch_sampler))
         self.iterator = super().__iter__()
 
     def __len__(self):
@@ -100,7 +101,7 @@ class InfiniteDataLoader(DataLoader):
 
 
 class _RepeatSampler(object):
-    """ Sampler that repeats forever
+    """Sampler that repeats forever
 
     Args:
         sampler (Sampler)
@@ -114,5 +115,8 @@ class _RepeatSampler(object):
             yield from iter(self.sampler)
 
 
-def img2label_paths(img_paths, image_dir='images', labels_dir='labels'):
-    return [os.path.splitext(s.replace(image_dir, labels_dir))[0] + '.txt' for s in img_paths]
+def img2label_paths(img_paths, image_dir="images", labels_dir="labels"):
+    return [
+        os.path.splitext(s.replace(image_dir, labels_dir))[0] + ".txt"
+        for s in img_paths
+    ]
