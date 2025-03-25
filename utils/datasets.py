@@ -446,7 +446,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         ), f"{prefix}No labels in {cache_path}. Can not train without labels. See {HELP_URL}"
 
         # Read cache
-        [cache.pop(k) for k in ("version", "msgs")]  # remove items
+        [cache.pop(k) for k in ("version",)]  # remove items
         labels, shapes, self.segments = zip(*cache.values())
         self.labels = list(labels)
         self.shapes = np.array(shapes, dtype=np.float64)
@@ -527,20 +527,18 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
     def cache_labels(self, path=Path("./labels.cache"), prefix=""):
         # Cache dataset labels, check images and read shapes
         x = {}  # dict
-        nm, nf, ne, nc, msgs = (
+        nm, nf, ne, nc = (
             0,
             0,
             0,
             0,
-            [],
         )  # number missing, found, empty, corrupt, messages
         desc = f"{prefix}Scanning '{path.parent / path.stem}' images and labels..."
         image_and_labels = [
-            verify_image_label(args)
+            verify_image_label(*args)
             for args in zip(
                 self.img_files,
                 self.label_files,
-                repeat(prefix),
                 repeat(self.num_coords),
             )
         ]
@@ -549,24 +547,19 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             desc=desc,
             total=len(self.img_files),
         )
-        for im_file, l, shape, segments, nm_f, nf_f, ne_f, nc_f, msg in pbar:
+        for im_file, l, shape, segments, nm_f, nf_f, ne_f, nc_f in pbar:
             nm += nm_f
             nf += nf_f
             ne += ne_f
             nc += nc_f
             if im_file:
                 x[im_file] = [l, shape, segments]
-            if msg:
-                msgs.append(msg)
             pbar.desc = f"{desc}{nf} found, {nm} missing, {ne} empty, {nc} corrupted"
 
         pbar.close()
-        if msgs:
-            logging.info("\n".join(msgs))
         if nf == 0:
             logging.info(f"{prefix}WARNING: No labels found in {path}. See {HELP_URL}")
         x["results"] = nf, nm, ne, nc, len(self.img_files)
-        x["msgs"] = msgs  # warnings
         x["version"] = 0.4  # cache version
         try:
             np.save(path, x)  # save cache for next time

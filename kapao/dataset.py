@@ -157,15 +157,16 @@ def extract_images_from_txtfile(path: str | Path) -> List[str]:
     return img_files
 
 
-def verify_image_label(args):
+def verify_image_label(
+    im_file: str, lb_file: str, num_coords: int
+) -> Tuple[str, np.ndarray, Tuple[int, int], List, int, int, int, int]:
     # Verify one image-label pair
-    im_file, lb_file, prefix, num_coords = args
-    nm, nf, ne, nc, msg, segments = (
+    # Returning 2nd (np.ndarray) is of shape [N, 3K+5].
+    nm, nf, ne, nc, segments = (
         0,
         0,
         0,
         0,
-        "",
         [],
     )  # number (missing, found, empty, corrupt), message, segments
     # verify images
@@ -180,7 +181,6 @@ def verify_image_label(args):
                 Image.open(im_file).save(
                     im_file, format="JPEG", subsampling=0, quality=100
                 )  # re-save image
-                msg = f"{prefix}WARNING: corrupt JPEG restored and saved {im_file}"
 
     # verify labels
     if os.path.isfile(lb_file):
@@ -196,4 +196,4 @@ def verify_image_label(args):
     else:
         nm = 1  # label missing
         l = np.zeros((0, 5 + num_coords * 3 // 2), dtype=np.float32)
-    return im_file, l, shape, segments, nm, nf, ne, nc, msg
+    return im_file, l, shape, segments, nm, nf, ne, nc
