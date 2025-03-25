@@ -10,6 +10,7 @@ from kapao.dataset import (
     img2label_paths,
     extract_images_from_txtfile,
     read_sample,
+    read_samples,
 )
 
 
@@ -26,10 +27,10 @@ def pil_image(image_shape) -> Image.Image:
 @pytest.fixture(params=[4, 10, 34])
 def image_with_label(tmp_path, pil_image: Image.Image, request):
     num_coords = request.param
-    tmp_img_path = tmp_path / "img.jpg"
+    tmp_img_path = tmp_path / "001.jpg"
     pil_image.save(tmp_img_path)
 
-    tmp_label_path = tmp_path / "label.txt"
+    tmp_label_path = tmp_path / "001.txt"
     # Insert a random superobject label and a random keypoint label.
     random_superobject = [0] + [random.random() for _ in range(4)]
     for _ in range(num_coords // 2):
@@ -108,3 +109,19 @@ def test_read_sample(image_with_label):
     assert nm == 0
     assert ne == 0
     assert nc == 0
+
+
+def test_read_samples(tmp_path, image_with_label):
+    tmp_img_path, tmp_label_path, num_coords = image_with_label
+    txtfile = tmp_path / "file.txt"
+    txtfile.write_text(f"{tmp_img_path}\n")
+    cache_path = txtfile.with_suffix(".cache")
+
+    assert not cache_path.is_file()
+
+    samples = read_samples(txtfile, num_coords, labels_dir="")
+    assert len(samples) == 3  # results, version, one sample.
+    assert cache_path.is_file()
+
+    samples = read_samples(txtfile, num_coords, labels_dir="")
+    assert len(samples) == 3  # results, version, one sample.
