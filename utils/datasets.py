@@ -53,6 +53,7 @@ from kapao.dataset import (
     convert_flip,
     extract_images_from_txtfile,
     IMG_FORMATS,
+    verify_image_label,
 )
 
 # Parameters
@@ -424,13 +425,14 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         if len(self.img_files) == 0:
             raise ValueError(f"{prefix}No images found")
 
+        # TODO: Wrap read cache inside a function.
         # Check cache
         self.label_files = img2label_paths(self.img_files, labels_dir=self.labels_dir)
         cache_path: Path = self.path.with_suffix(".cache")
         if cache_path.is_file():
             cache, cache_exists = np.load(cache_path, allow_pickle=True).item(), True
         else:
-            cache, cache_exists = self.cache_labels(cache_path, prefix), False
+            cache, cache_exists = self.cache_labels(cache_path), False
 
         # Display cache
         nf, nm, ne, nc, n = cache.pop(
@@ -439,11 +441,10 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         if cache_exists:
             d = f"Scanning '{cache_path}' images and labels... {nf} found, {nm} missing, {ne} empty, {nc} corrupted"
             tqdm(None, desc=prefix + d, total=n, initial=n)  # display cache results
-            if cache["msgs"]:
-                logging.info("\n".join(cache["msgs"]))  # display warnings
         assert (
             nf > 0 or not augment
         ), f"{prefix}No labels in {cache_path}. Can not train without labels. See {HELP_URL}"
+        # TODO: until here
 
         # Read cache
         [cache.pop(k) for k in ("version",)]  # remove items
@@ -524,7 +525,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                 pbar.desc = f"{prefix}Caching images ({gb / 1E9:.1f}GB {cache_images})"
             pbar.close()
 
-    def cache_labels(self, path=Path("./labels.cache"), prefix=""):
+    def cache_labels(self, path=Path("./labels.cache")):
         # Cache dataset labels, check images and read shapes
         x = {}  # dict
         nm, nf, ne, nc = (
@@ -533,7 +534,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             0,
             0,
         )  # number missing, found, empty, corrupt, messages
-        desc = f"{prefix}Scanning '{path.parent / path.stem}' images and labels..."
+        desc = f"Scanning '{path.parent / path.stem}' images and labels..."
         image_and_labels = [
             verify_image_label(*args)
             for args in zip(
@@ -542,33 +543,20 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                 repeat(self.num_coords),
             )
         ]
-        pbar = tqdm(
-            image_and_labels,
-            desc=desc,
-            total=len(self.img_files),
-        )
-        for im_file, l, shape, segments, nm_f, nf_f, ne_f, nc_f in pbar:
+        for im_file, l, shape, segments, nm_f, nf_f, ne_f, nc_f in image_and_labels:
             nm += nm_f
             nf += nf_f
             ne += ne_f
             nc += nc_f
             if im_file:
                 x[im_file] = [l, shape, segments]
-            pbar.desc = f"{desc}{nf} found, {nm} missing, {ne} empty, {nc} corrupted"
-
-        pbar.close()
         if nf == 0:
-            logging.info(f"{prefix}WARNING: No labels found in {path}. See {HELP_URL}")
+            raise ValueError(f"No labels found in {path}. See {HELP_URL}")
         x["results"] = nf, nm, ne, nc, len(self.img_files)
         x["version"] = 0.4  # cache version
-        try:
-            np.save(path, x)  # save cache for next time
-            path.with_suffix(".cache.npy").rename(path)  # remove .npy suffix
-            logging.info(f"{prefix}New cache created: {path}")
-        except Exception as e:
-            logging.info(
-                f"{prefix}WARNING: Cache directory {path.parent} is not writeable: {e}"
-            )  # path not writeable
+
+        np.save(path, x)  # save cache for next time
+        path.with_suffix(".cache.npy").rename(path)  # remove .npy suffix
         return x
 
     def __len__(self):
