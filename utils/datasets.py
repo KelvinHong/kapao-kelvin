@@ -430,17 +430,14 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         self.label_files = img2label_paths(self.img_files, labels_dir=self.labels_dir)
         cache_path: Path = self.path.with_suffix(".cache")
         if cache_path.is_file():
-            cache, cache_exists = np.load(cache_path, allow_pickle=True).item(), True
+            cache = np.load(cache_path, allow_pickle=True).item()
         else:
-            cache, cache_exists = self.cache_labels(cache_path), False
+            cache = self.cache_labels(cache_path)
 
         # Display cache
         nf, nm, ne, nc, n = cache.pop(
             "results"
         )  # found, missing, empty, corrupted, total
-        if cache_exists:
-            d = f"Scanning '{cache_path}' images and labels... {nf} found, {nm} missing, {ne} empty, {nc} corrupted"
-            tqdm(None, desc=prefix + d, total=n, initial=n)  # display cache results
         assert (
             nf > 0 or not augment
         ), f"{prefix}No labels in {cache_path}. Can not train without labels. See {HELP_URL}"
