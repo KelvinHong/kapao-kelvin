@@ -528,28 +528,26 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
     def cache_labels(self, path=Path("./labels.cache")):
         # Cache dataset labels, check images and read shapes
         x = {}  # dict
-        nm, nf, ne, nc = (
-            0,
-            0,
-            0,
-            0,
-        )  # number missing, found, empty, corrupt, messages
-        desc = f"Scanning '{path.parent / path.stem}' images and labels..."
-        image_and_labels = [
-            verify_image_label(*args)
-            for args in zip(
-                self.img_files,
-                self.label_files,
-                repeat(self.num_coords),
-            )
-        ]
-        for im_file, l, shape, segments, nm_f, nf_f, ne_f, nc_f in image_and_labels:
+        nm, nf, ne, nc = 0, 0, 0, 0  # number missing, found, empty, corrupt
+
+        for img_file, label_file in zip(self.img_files, self.label_files):
+            (
+                img_file,
+                label_array,
+                shape,
+                segments,
+                nm_f,
+                nf_f,
+                ne_f,
+                nc_f,
+            ) = verify_image_label(img_file, label_file, self.num_coords)
             nm += nm_f
             nf += nf_f
             ne += ne_f
             nc += nc_f
-            if im_file:
-                x[im_file] = [l, shape, segments]
+            if img_file:
+                x[img_file] = [label_array, shape, segments]
+
         if nf == 0:
             raise ValueError(f"No labels found in {path}. See {HELP_URL}")
         x["results"] = nf, nm, ne, nc, len(self.img_files)
