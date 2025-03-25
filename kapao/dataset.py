@@ -158,7 +158,7 @@ def extract_images_from_txtfile(path: str | Path) -> List[str]:
 
 
 def read_sample(
-    im_file: str, lb_file: str, num_coords: int
+    img_file: str, label_file: str, num_coords: int
 ) -> Tuple[str, np.ndarray, Tuple[int, int], List, int, int, int, int]:
     # Verify one image-label pair
     # Returning 2nd (np.ndarray) is of shape [N, 3K+5].
@@ -170,22 +170,22 @@ def read_sample(
         [],
     )  # number (missing, found, empty, corrupt), message, segments
     # verify images
-    im = Image.open(im_file)
+    im = Image.open(img_file)
     im.verify()  # PIL verify
     shape = exif_size(im)  # image size
     assert im.format.lower() in IMG_FORMATS, f"invalid image format {im.format}"
     if im.format.lower() in ("jpg", "jpeg"):
-        with open(im_file, "rb") as f:
+        with open(img_file, "rb") as f:
             f.seek(-2, 2)
             if f.read() != b"\xff\xd9":  # corrupt JPEG
-                Image.open(im_file).save(
-                    im_file, format="JPEG", subsampling=0, quality=100
+                Image.open(img_file).save(
+                    img_file, format="JPEG", subsampling=0, quality=100
                 )  # re-save image
 
     # verify labels
-    if os.path.isfile(lb_file):
+    if os.path.isfile(label_file):
         nf = 1  # label found
-        with open(lb_file, "r") as f:
+        with open(label_file, "r") as f:
             l = [x.split() for x in f.read().strip().splitlines() if len(x)]
             l = np.array(l, dtype=np.float32)
         if len(l):
@@ -196,7 +196,7 @@ def read_sample(
     else:
         nm = 1  # label missing
         l = np.zeros((0, 5 + num_coords * 3 // 2), dtype=np.float32)
-    return im_file, l, shape, segments, nm, nf, ne, nc
+    return img_file, l, shape, segments, nm, nf, ne, nc
 
 
 def read_samples(

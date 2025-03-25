@@ -53,7 +53,6 @@ from kapao.dataset import (
     convert_flip,
     extract_images_from_txtfile,
     IMG_FORMATS,
-    read_sample,
     read_samples,
 )
 
