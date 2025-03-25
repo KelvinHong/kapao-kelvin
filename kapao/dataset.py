@@ -2,6 +2,7 @@ from PIL import Image
 from typing import Tuple, List, Dict
 from torch.utils.data.dataloader import DataLoader
 import os
+import numpy as np
 from pathlib import Path
 
 # The key for ExifTags Orientation:
@@ -154,3 +155,45 @@ def extract_images_from_txtfile(path: str | Path) -> List[str]:
         [str(Path(x)) for x in img_files if x.lower().endswith(tuple(IMG_FORMATS))]
     )
     return img_files
+
+
+def verify_image_label(args):
+    # Verify one image-label pair
+    im_file, lb_file, prefix, num_coords = args
+    nm, nf, ne, nc, msg, segments = (
+        0,
+        0,
+        0,
+        0,
+        "",
+        [],
+    )  # number (missing, found, empty, corrupt), message, segments
+    # verify images
+    im = Image.open(im_file)
+    im.verify()  # PIL verify
+    shape = exif_size(im)  # image size
+    assert im.format.lower() in IMG_FORMATS, f"invalid image format {im.format}"
+    if im.format.lower() in ("jpg", "jpeg"):
+        with open(im_file, "rb") as f:
+            f.seek(-2, 2)
+            if f.read() != b"\xff\xd9":  # corrupt JPEG
+                Image.open(im_file).save(
+                    im_file, format="JPEG", subsampling=0, quality=100
+                )  # re-save image
+                msg = f"{prefix}WARNING: corrupt JPEG restored and saved {im_file}"
+
+    # verify labels
+    if os.path.isfile(lb_file):
+        nf = 1  # label found
+        with open(lb_file, "r") as f:
+            l = [x.split() for x in f.read().strip().splitlines() if len(x)]
+            l = np.array(l, dtype=np.float32)
+        if len(l):
+            assert (l >= 0).all(), "negative labels"
+        else:
+            ne = 1  # label empty
+            l = np.zeros((0, 5 + num_coords * 3 // 2), dtype=np.float32)
+    else:
+        nm = 1  # label missing
+        l = np.zeros((0, 5 + num_coords * 3 // 2), dtype=np.float32)
+    return im_file, l, shape, segments, nm, nf, ne, nc, msg
