@@ -1,5 +1,5 @@
 from PIL import Image
-from typing import Tuple, List, Dict
+from typing import Tuple, List, Dict, Any
 from torch.utils.data.dataloader import DataLoader
 import os
 import numpy as np
@@ -199,7 +199,32 @@ def read_sample(
     return im_file, l, shape, segments, nm, nf, ne, nc
 
 
-def read_sample_with_cache(path: str | Path, num_coords: int, labels_dir: str = ""):
+def read_sample_with_cache(
+    path: str | Path, num_coords: int, labels_dir: str = "labels"
+) -> Dict[str, Any]:
+    """Read all samples from a txt file with caching.
+
+    Args:
+        path (str | Path): A text file containing all image paths to be used.
+        num_coords (int): Number of coordinates which is 2 * number of keypoints.
+        labels_dir (str, optional): Name of the labels directory, to be used for swapping. Defaults to "labels".
+
+    Returns:
+        Dict[str, Any]: A dictionary, containing all the sample data and metadata.
+        Example:
+        {
+            "results": Tuple[int * 5] = (found, missing, empty label, corrupted, len(img_files)),
+            "version": float = 0.4,  # Might be useless, TODO: remove this if okay.
+            "data/datasets/coco/images/val2017/000000006012.jpg": Tuple[np.ndarray (N, 3K+5), (w, h), segment (not important)],
+            "data/datasets/coco/images/val2017/000000010977.jpg": {same},
+            ...
+        }
+        One (3K+5) tensor seems to be
+        [class_id, cx, cy, w, h, x1, y1, v1, ..., xK, yK, vK]
+        class_id = 0 means superobject, 1->K means keypoint.
+        All coordinate values are normalized within 0-1,
+        visibility flags can be 0, 1, 2 only.
+    """
     path = Path(path)
     img_files = extract_images_from_txtfile(path)
     label_files = img2label_paths(img_files, labels_dir=labels_dir)

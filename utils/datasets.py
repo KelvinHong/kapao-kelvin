@@ -422,11 +422,6 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
 
         self.obj_flip = None if self.kp_flip is None else convert_flip(self.kp_flip)
 
-        self.img_files = extract_images_from_txtfile(self.path)
-        if len(self.img_files) == 0:
-            raise ValueError(f"{prefix}No images found")
-
-        self.label_files = img2label_paths(self.img_files, labels_dir=self.labels_dir)
         image_and_labels = read_sample_with_cache(
             self.path, self.num_coords, labels_dir=self.labels_dir
         )
@@ -436,10 +431,8 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         labels, shapes, self.segments = zip(*image_and_labels.values())
         self.labels = list(labels)
         self.shapes = np.array(shapes, dtype=np.float64)
-        self.img_files = list(image_and_labels.keys())  # update
-        self.label_files = img2label_paths(
-            image_and_labels.keys(), labels_dir=self.labels_dir
-        )  # update
+        self.img_files = list(image_and_labels.keys())
+        self.label_files = img2label_paths(self.img_files, labels_dir=self.labels_dir)
         if single_cls:
             for x in self.labels:
                 x[:, 0] = 0
