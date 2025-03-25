@@ -54,6 +54,7 @@ from kapao.dataset import (
     extract_images_from_txtfile,
     IMG_FORMATS,
     read_sample,
+    read_sample_with_cache,
 )
 
 # Parameters
@@ -425,32 +426,19 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         if len(self.img_files) == 0:
             raise ValueError(f"{prefix}No images found")
 
-        # TODO: Wrap read cache inside a function.
-        # Check cache
         self.label_files = img2label_paths(self.img_files, labels_dir=self.labels_dir)
-        cache_path: Path = self.path.with_suffix(".cache")
-        if cache_path.is_file():
-            cache = np.load(cache_path, allow_pickle=True).item()
-        else:
-            cache = self.cache_labels(cache_path)
-
-        # Display cache
-        nf, nm, ne, nc, n = cache.pop(
-            "results"
-        )  # found, missing, empty, corrupted, total
-        assert (
-            nf > 0 or not augment
-        ), f"{prefix}No labels in {cache_path}. Can not train without labels. See {HELP_URL}"
-        # TODO: until here
+        image_and_labels = read_sample_with_cache(
+            self.path, self.num_coords, labels_dir=self.labels_dir
+        )
 
         # Read cache
-        [cache.pop(k) for k in ("version",)]  # remove items
-        labels, shapes, self.segments = zip(*cache.values())
+        [image_and_labels.pop(k) for k in ("version", "results")]  # remove items
+        labels, shapes, self.segments = zip(*image_and_labels.values())
         self.labels = list(labels)
         self.shapes = np.array(shapes, dtype=np.float64)
-        self.img_files = list(cache.keys())  # update
+        self.img_files = list(image_and_labels.keys())  # update
         self.label_files = img2label_paths(
-            cache.keys(), labels_dir=self.labels_dir
+            image_and_labels.keys(), labels_dir=self.labels_dir
         )  # update
         if single_cls:
             for x in self.labels:
@@ -521,38 +509,6 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                     gb += self.imgs[i].nbytes
                 pbar.desc = f"{prefix}Caching images ({gb / 1E9:.1f}GB {cache_images})"
             pbar.close()
-
-    def cache_labels(self, path=Path("./labels.cache")):
-        # Cache dataset labels, check images and read shapes
-        x = {}  # dict
-        nm, nf, ne, nc = 0, 0, 0, 0  # number missing, found, empty, corrupt
-
-        for img_file, label_file in zip(self.img_files, self.label_files):
-            (
-                img_file,
-                label_array,
-                shape,
-                segments,
-                nm_f,
-                nf_f,
-                ne_f,
-                nc_f,
-            ) = read_sample(img_file, label_file, self.num_coords)
-            nm += nm_f
-            nf += nf_f
-            ne += ne_f
-            nc += nc_f
-            if img_file:
-                x[img_file] = [label_array, shape, segments]
-
-        if nf == 0:
-            raise ValueError(f"No labels found in {path}. See {HELP_URL}")
-        x["results"] = nf, nm, ne, nc, len(self.img_files)
-        x["version"] = 0.4  # cache version
-
-        np.save(path, x)  # save cache for next time
-        path.with_suffix(".cache.npy").rename(path)  # remove .npy suffix
-        return x
 
     def __len__(self):
         return len(self.img_files)

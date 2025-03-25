@@ -197,3 +197,41 @@ def read_sample(
         nm = 1  # label missing
         l = np.zeros((0, 5 + num_coords * 3 // 2), dtype=np.float32)
     return im_file, l, shape, segments, nm, nf, ne, nc
+
+
+def read_sample_with_cache(path: str | Path, num_coords: int, labels_dir: str = ""):
+    path = Path(path)
+    img_files = extract_images_from_txtfile(path)
+    label_files = img2label_paths(img_files, labels_dir=labels_dir)
+    cache_path: Path = path.with_suffix(".cache")
+    if cache_path.is_file():
+        sample_data = np.load(cache_path, allow_pickle=True).item()
+    else:
+        sample_data = {}
+        nm, nf, ne, nc = 0, 0, 0, 0  # number missing, found, empty, corrupt
+        for img_file, label_file in zip(img_files, label_files):
+            (
+                img_file,
+                label_array,
+                shape,
+                segments,
+                nm_f,
+                nf_f,
+                ne_f,
+                nc_f,
+            ) = read_sample(img_file, label_file, num_coords)
+            nm += nm_f
+            nf += nf_f
+            ne += ne_f
+            nc += nc_f
+            if img_file:
+                sample_data[img_file] = [label_array, shape, segments]
+        if nf == 0:
+            raise ValueError(f"No labels found in {cache_path}.")
+        sample_data["results"] = nf, nm, ne, nc, len(img_files)
+        sample_data["version"] = 0.4  # cache version
+
+        np.save(cache_path, sample_data)  # save cache for next time
+        cache_path.with_suffix(".cache.npy").rename(cache_path)  # remove .npy suffix
+
+    return sample_data
