@@ -53,7 +53,7 @@ from kapao.dataset import (
     convert_flip,
     extract_images_from_txtfile,
     IMG_FORMATS,
-    verify_image_label,
+    read_sample,
 )
 
 # Parameters
@@ -540,7 +540,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                 nf_f,
                 ne_f,
                 nc_f,
-            ) = verify_image_label(img_file, label_file, self.num_coords)
+            ) = read_sample(img_file, label_file, self.num_coords)
             nm += nm_f
             nf += nf_f
             ne += ne_f

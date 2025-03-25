@@ -157,7 +157,7 @@ def extract_images_from_txtfile(path: str | Path) -> List[str]:
     return img_files
 
 
-def verify_image_label(
+def read_sample(
     im_file: str, lb_file: str, num_coords: int
 ) -> Tuple[str, np.ndarray, Tuple[int, int], List, int, int, int, int]:
     # Verify one image-label pair
