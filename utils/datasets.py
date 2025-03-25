@@ -54,7 +54,7 @@ from kapao.dataset import (
     extract_images_from_txtfile,
     IMG_FORMATS,
     read_sample,
-    read_sample_with_cache,
+    read_samples,
 )
 
 # Parameters
@@ -422,7 +422,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
 
         self.obj_flip = None if self.kp_flip is None else convert_flip(self.kp_flip)
 
-        image_and_labels = read_sample_with_cache(
+        image_and_labels = read_samples(
             self.path, self.num_coords, labels_dir=self.labels_dir
         )
 

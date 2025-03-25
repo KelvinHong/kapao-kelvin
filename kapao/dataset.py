@@ -199,7 +199,7 @@ def read_sample(
     return im_file, l, shape, segments, nm, nf, ne, nc
 
 
-def read_sample_with_cache(
+def read_samples(
     path: str | Path, num_coords: int, labels_dir: str = "labels"
 ) -> Dict[str, Any]:
     """Read all samples from a txt file with caching.
