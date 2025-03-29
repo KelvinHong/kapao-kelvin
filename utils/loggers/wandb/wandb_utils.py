@@ -226,7 +226,6 @@ class WandbLogger:
         assert wandb, "Install wandb to upload dataset"
         config_path = self.log_dataset_artifact(
             opt.data,
-            opt.single_cls,
             "YOLOv5" if opt.project == "runs/train" else Path(opt.project).stem,
         )
         print("Created dataset config file ", config_path)
@@ -392,15 +391,12 @@ class WandbLogger:
         )
         print("Saving model artifact on epoch ", epoch + 1)
 
-    def log_dataset_artifact(
-        self, data_file, single_cls, project, overwrite_config=False
-    ):
+    def log_dataset_artifact(self, data_file, project, overwrite_config=False):
         """
         Log the dataset as W&B artifact and return the new data file with W&B links
 
         arguments:
         data_file (str) -- the .yaml file with information about the dataset like - path, classes etc.
-        single_class (boolean)  -- train multi-class data as single-class
         project (str) -- project name. Used to construct the artifact path
         overwrite_config (boolean) -- overwrites the data.yaml file if set to true otherwise creates a new
         file with _wandb postfix. Eg -> data_wandb.yaml
@@ -410,7 +406,7 @@ class WandbLogger:
         """
         self.data_dict = check_dataset(data_file)  # parse and check
         data = dict(self.data_dict)
-        nc, names = (1, ["item"]) if single_cls else (int(data["nc"]), data["names"])
+        nc, names = (int(data["nc"]), data["names"])
         names = {k: v for k, v in enumerate(names)}  # to index dictionary
         self.train_artifact = (
             self.create_dataset_table(

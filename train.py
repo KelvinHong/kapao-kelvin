@@ -72,7 +72,6 @@ def train(
         epochs,
         batch_size,
         weights,
-        single_cls,
         evolve,
         data,
         cfg,
@@ -88,7 +87,6 @@ def train(
         opt.epochs,
         opt.batch_size,
         opt.weights,
-        opt.single_cls,
         opt.evolve,
         opt.data,
         opt.cfg,
@@ -142,10 +140,8 @@ def train(
     with torch_distributed_zero_first(RANK):
         data_dict = data_dict or check_dataset(data)  # check if None
     train_path, val_path = data_dict["train"], data_dict["val"]
-    nc = 1 if single_cls else int(data_dict["nc"])  # number of classes
-    names = (
-        ["item"] if single_cls and len(data_dict["names"]) != 1 else data_dict["names"]
-    )  # class names
+    nc = int(data_dict["nc"])  # number of classes
+    names = data_dict["names"]  # class names
     assert (
         len(names) == nc
     ), f"{len(names)} names found for nc={nc} dataset in {data}"  # check
@@ -300,7 +296,6 @@ def train(
         imgsz,
         batch_size // WORLD_SIZE,
         gs,
-        single_cls,
         hyp=hyp,
         augment=True,
         cache=opt.cache,
@@ -327,7 +322,6 @@ def train(
             imgsz,
             batch_size // WORLD_SIZE,
             gs,
-            single_cls,
             hyp=hyp,
             cache=None if noval else opt.cache,
             rect=False,

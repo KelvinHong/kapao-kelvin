@@ -78,7 +78,6 @@ def create_dataloader(
     imgsz,
     batch_size,
     stride,
-    single_cls=False,
     hyp=None,
     augment=False,
     cache=False,
@@ -103,7 +102,6 @@ def create_dataloader(
             hyp=hyp,  # augmentation hyperparameters
             rect=rect,  # rectangular training
             cache_images=cache,
-            single_cls=single_cls,
             stride=int(stride),
             pad=pad,
             image_weights=image_weights,
@@ -395,7 +393,6 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         rect=False,
         image_weights=False,
         cache_images=False,
-        single_cls=False,
         stride=32,
         pad=0.0,
         prefix="",
@@ -432,9 +429,6 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         self.shapes = np.array(shapes, dtype=np.float64)
         self.img_files = list(image_and_labels.keys())
         self.label_files = img2label_paths(self.img_files, labels_dir=self.labels_dir)
-        if single_cls:
-            for x in self.labels:
-                x[:, 0] = 0
 
         n = len(shapes)  # number of images
         bi = np.floor(np.arange(n) / batch_size).astype(int)  # batch index
