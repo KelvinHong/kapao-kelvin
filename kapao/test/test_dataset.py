@@ -11,6 +11,7 @@ from kapao.dataset import (
     extract_images_from_txtfile,
     read_sample,
     read_samples,
+    reorder_rectangle_shapes,
 )
 
 
@@ -125,3 +126,40 @@ def test_read_samples(tmp_path, image_with_label):
 
     samples = read_samples(txtfile, num_coords, labels_dir="")
     assert len(samples) == 3  # results, version, one sample.
+
+
+@pytest.mark.parametrize(
+    "original_shapes,batch_size,expected_shapes,expected_reordering",
+    [
+        (
+            np.array([[400, 640], [640, 640]]),
+            1,
+            np.array([[1280, 1280], [1280, 832]]),
+            np.array([1, 0]),
+        ),
+        (
+            np.array([[400, 640], [640, 640]]),
+            2,
+            np.array([[1280, 1280]]),
+            np.array([1, 0]),
+        ),
+        (
+            np.array([[400, 640], [640, 640], [800, 640], [450, 640]]),
+            2,
+            np.array([[1280, 1280], [1280, 960]]),
+            np.array([2, 1, 3, 0]),
+        ),
+    ],
+)
+def test_reorder_rectangle_shapes(
+    original_shapes, batch_size, expected_shapes, expected_reordering
+):
+    img_size = 1280
+    stride = 64
+    padding = 0
+
+    result_1, result_2 = reorder_rectangle_shapes(
+        original_shapes, batch_size, img_size, stride, padding
+    )
+    assert np.array_equal(result_1, expected_shapes)
+    assert np.array_equal(result_2, expected_reordering)
