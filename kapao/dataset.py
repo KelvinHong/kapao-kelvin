@@ -260,3 +260,49 @@ def read_samples(
         cache_path.with_suffix(".cache.npy").rename(cache_path)  # remove .npy suffix
 
     return sample_data
+
+
+def reorder_rectangle_shapes(
+    original_shapes: np.ndarray,
+    batch_size: int,
+    img_size: int,
+    stride: int,
+    padding: int = 0,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Reorder original shapes by height/width increasing ratio, outputs a number of shapes to be used in letterbox augmentation.
+    In the same batch, all images are resized to the same size, they will be as square as possible.
+
+    Args:
+        original_shapes (np.ndarray): The original shapes of the images, do not need to be sorted. Shape (N, 2) in wh format.
+        batch_size (int): Batch size of dataset.
+        img_size (int): This is model input shape, usually it is square, so we only require int.
+        stride (int): stride of the model.
+        padding (int, optional): Padding to be added. Defaults to 0.
+
+    Returns:
+        Tuple[np.ndarray, np.ndarray]:
+            - 1st np.ndarray: The reordered shapes of the images to be used in letterbox augmentation, Shape (N, 2) in hw format.
+            - 2nd np.ndarray: The index obtained from np.argsort.
+    """
+    num_samples = len(original_shapes)
+    batch_indices = np.floor(np.arange(num_samples) / batch_size).astype(int)
+    num_batches = batch_indices[-1] + 1  # number of batches
+
+    aspect_ratios = original_shapes[:, 1] / original_shapes[:, 0]  # aspect ratio
+    increasing_indices = aspect_ratios.argsort()
+    aspect_ratios = aspect_ratios[increasing_indices]
+
+    shapes = [[1, 1]] * num_batches
+    for i in range(num_batches):
+        batch_aspect_ratios = aspect_ratios[batch_indices == i]
+        min_ratio, max_ratio = batch_aspect_ratios.min(), batch_aspect_ratios.max()
+        if max_ratio < 1:
+            shapes[i] = [max_ratio, 1]
+        elif min_ratio > 1:
+            shapes[i] = [1, 1 / min_ratio]
+
+    reordered_shapes = (
+        np.ceil(np.array(shapes) * img_size / stride + padding).astype(int) * stride
+    )  # hw
+
+    return reordered_shapes, increasing_indices

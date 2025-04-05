@@ -54,6 +54,7 @@ from kapao.dataset import (
     extract_images_from_txtfile,
     IMG_FORMATS,
     read_samples,
+    reorder_rectangle_shapes,
 )
 
 # Parameters
@@ -426,42 +427,26 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         [image_and_labels.pop(k) for k in ("version", "results")]  # remove items
         labels, shapes, self.segments = zip(*image_and_labels.values())
         self.labels = list(labels)
-        self.shapes = np.array(shapes, dtype=np.float64)
+        self.shapes = np.array(shapes, dtype=np.float64)  # wh
         self.img_files = list(image_and_labels.keys())
         self.label_files = img2label_paths(self.img_files, labels_dir=self.labels_dir)
 
         n = len(shapes)  # number of images
         bi = np.floor(np.arange(n) / batch_size).astype(int)  # batch index
-        nb = bi[-1] + 1  # number of batches
         self.batch = bi  # batch index of image
         self.n = n
         self.indices = range(n)
 
         # Rectangular Training
+        # Reorder the images so that letterbox will apply the least padding possible in the same batch.
         if self.rect:
-            # Sort by aspect ratio
-            s = self.shapes  # wh
-            ar = s[:, 1] / s[:, 0]  # aspect ratio
-            irect = ar.argsort()
-            self.img_files = [self.img_files[i] for i in irect]
-            self.label_files = [self.label_files[i] for i in irect]
-            self.labels = [self.labels[i] for i in irect]
-            self.shapes = s[irect]  # wh
-            ar = ar[irect]
-
-            # Set training image shapes
-            shapes = [[1, 1]] * nb
-            for i in range(nb):
-                ari = ar[bi == i]
-                mini, maxi = ari.min(), ari.max()
-                if maxi < 1:
-                    shapes[i] = [maxi, 1]
-                elif mini > 1:
-                    shapes[i] = [1, 1 / mini]
-
-            self.batch_shapes = (
-                np.ceil(np.array(shapes) * img_size / stride + pad).astype(int) * stride
+            self.batch_shapes, reorder_indices = reorder_rectangle_shapes(
+                self.shapes, batch_size, img_size, stride, padding=pad
             )
+            self.img_files = [self.img_files[i] for i in reorder_indices]
+            self.label_files = [self.label_files[i] for i in reorder_indices]
+            self.labels = [self.labels[i] for i in reorder_indices]
+            self.shapes = self.shapes[reorder_indices]
 
         # Cache images into memory for faster training (WARNING: large datasets may exceed system RAM)
         self.imgs, self.img_npy = [None] * n, [None] * n
