@@ -461,46 +461,33 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         index = self.indices[index]  # linear, shuffled, or image_weights
 
         hyp = self.hyp
-        mosaic = self.mosaic and random.random() < hyp["mosaic"]
-        if mosaic:
-            # Load mosaic
-            img, labels = load_mosaic(self, index, kp_bbox=self.kp_bbox)
-            shapes = None
+        # Load image
+        img, (h0, w0), (h, w) = load_image(self, index)
 
-            # MixUp augmentation
-            if random.random() < hyp["mixup"]:
-                img, labels = mixup(
-                    img, labels, *load_mosaic(self, random.randint(0, self.n - 1))
-                )
+        # Letterbox
+        shape = (
+            self.batch_shapes[self.batch[index]] if self.rect else self.img_size
+        )  # final letterboxed shape
+        img, ratio, pad = letterbox(img, shape, auto=False, scaleup=self.augment)
+        shapes = (h0, w0), ((h / h0, w / w0), pad)  # for COCO mAP rescaling
 
-        else:
-            # Load image
-            img, (h0, w0), (h, w) = load_image(self, index)
+        labels = self.labels[index].copy()
+        if labels.size:  # normalized xywh to pixel xyxy format
+            labels[:, 1:] = xywhn2xyxy(
+                labels[:, 1:], ratio[0] * w, ratio[1] * h, padw=pad[0], padh=pad[1]
+            )
 
-            # Letterbox
-            shape = (
-                self.batch_shapes[self.batch[index]] if self.rect else self.img_size
-            )  # final letterboxed shape
-            img, ratio, pad = letterbox(img, shape, auto=False, scaleup=self.augment)
-            shapes = (h0, w0), ((h / h0, w / w0), pad)  # for COCO mAP rescaling
-
-            labels = self.labels[index].copy()
-            if labels.size:  # normalized xywh to pixel xyxy format
-                labels[:, 1:] = xywhn2xyxy(
-                    labels[:, 1:], ratio[0] * w, ratio[1] * h, padw=pad[0], padh=pad[1]
-                )
-
-            if self.augment:
-                img, labels = random_perspective(
-                    img,
-                    labels,
-                    degrees=hyp["degrees"],
-                    translate=hyp["translate"],
-                    scale=hyp["scale"],
-                    shear=hyp["shear"],
-                    perspective=hyp["perspective"],
-                    kp_bbox=self.kp_bbox,
-                )
+        if self.augment:
+            img, labels = random_perspective(
+                img,
+                labels,
+                degrees=hyp["degrees"],
+                translate=hyp["translate"],
+                scale=hyp["scale"],
+                shear=hyp["shear"],
+                perspective=hyp["perspective"],
+                kp_bbox=self.kp_bbox,
+            )
 
         nl = len(labels)  # number of labels
         if nl:
