@@ -12,7 +12,6 @@ import torch
 from tqdm import tqdm
 from models.experimental import attempt_load
 from utils.datasets import create_dataloader
-from utils.augmentations import letterbox
 from utils.general import (
     check_dataset,
     check_file,
@@ -26,6 +25,7 @@ from utils.torch_utils import select_device, time_sync
 import tempfile
 import cv2
 import pickle
+from kapao.augmentations import letterbox
 
 PAD_COLOR = (114 / 255, 114 / 255, 114 / 255)
 

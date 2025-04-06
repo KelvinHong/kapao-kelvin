@@ -17,7 +17,6 @@ import torch.nn as nn
 from PIL import Image
 from torch.cuda import amp
 
-from utils.datasets import letterbox
 from utils.general import (
     colorstr,
     increment_path,
@@ -31,6 +30,7 @@ from utils.general import (
 from utils.plots import Annotator, colors
 from utils.torch_utils import time_sync
 from kapao.dataset import exif_transpose
+from kapao.augmentations import letterbox
 
 LOGGER = logging.getLogger(__name__)
 

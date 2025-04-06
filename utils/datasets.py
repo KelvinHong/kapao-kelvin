@@ -30,7 +30,6 @@ from utils.augmentations import (
     Albumentations,
     augment_hsv,
     copy_paste,
-    letterbox,
     mixup,
     random_perspective,
 )
@@ -57,6 +56,7 @@ from kapao.dataset import (
     reorder_rectangle_shapes,
     load_and_reshape_image,
 )
+from kapao.augmentations import letterbox
 
 # Parameters
 HELP_URL = "https://github.com/ultralytics/yolov5/wiki/Train-Custom-Data"
