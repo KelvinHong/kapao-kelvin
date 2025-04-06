@@ -12,6 +12,7 @@ from kapao.dataset import (
     read_sample,
     read_samples,
     reorder_rectangle_shapes,
+    load_and_reshape_image,
 )
 
 
@@ -163,3 +164,31 @@ def test_reorder_rectangle_shapes(
     )
     assert np.array_equal(result_1, expected_shapes)
     assert np.array_equal(result_2, expected_reordering)
+
+
+@pytest.mark.parametrize(
+    "augment",
+    (True, False),
+)
+@pytest.mark.parametrize(
+    "original_shape,input_size,expected_final_shape",
+    [
+        ((640, 640), 1280, (1280, 1280)),
+        ((400, 640), 1280, (800, 1280)),
+        ((800, 640), 1280, (1280, 1024)),
+        ((640, 400), 1000, (1000, 625)),
+    ],
+)
+def test_load_and_reshape_image(
+    original_shape, input_size, expected_final_shape, tmp_path, augment
+):
+    path = tmp_path / "test.jpg"
+    img = Image.new(
+        "RGB", original_shape[::-1]
+    )  # Image.new expects (width, height) but our original_shape is (height, width)
+    img.save(path)
+
+    img, result_og_shape = load_and_reshape_image(path, input_size, augment)
+
+    assert result_og_shape == original_shape
+    assert img.shape[:2] == expected_final_shape
