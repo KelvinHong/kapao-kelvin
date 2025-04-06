@@ -3,6 +3,7 @@ from typing import Tuple, List, Dict, Any
 from torch.utils.data.dataloader import DataLoader
 import os
 import numpy as np
+import cv2
 from pathlib import Path
 
 # The key for ExifTags Orientation:
@@ -306,3 +307,35 @@ def reorder_rectangle_shapes(
     )  # hw
 
     return reordered_shapes, increasing_indices
+
+
+def load_and_reshape_image(
+    image_path: str, input_size: int, augment: bool = False
+) -> Tuple[np.ndarray, Tuple[int, int]]:
+    """Load an image and reshape it to the desired input size for model forward.
+    Assuming we perform augmentation only when training, then
+    we only use INTER_AREA interpolation when shrinking & validating.
+    Everything else uses INTER_LINEAR interpolation.
+
+    Args:
+        image_path (str): Path to the image file.
+        input_size (int): Desired input size for the model.
+        augment (bool, optional): Augmentation is enabled or not. Defaults to False.
+
+    Returns:
+        Tuple[np.ndarray, Tuple[int, int]]: Reshaped image and its original size.
+    """
+    img = cv2.imread(image_path)  # BGR
+    original_h, original_w = img.shape[:2]
+
+    scale = input_size / max(original_h, original_w)
+    if scale != 1:
+        interpolation_method = (
+            cv2.INTER_AREA if scale < 1 and not augment else cv2.INTER_LINEAR
+        )
+        img = cv2.resize(
+            img,
+            (int(original_w * scale), int(original_h * scale)),
+            interpolation_method,
+        )
+    return img, (original_h, original_w)

@@ -55,6 +55,7 @@ from kapao.dataset import (
     IMG_FORMATS,
     read_samples,
     reorder_rectangle_shapes,
+    load_and_reshape_image,
 )
 
 # Parameters
@@ -433,7 +434,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
 
         n = len(shapes)  # number of images
         bi = np.floor(np.arange(n) / batch_size).astype(int)  # batch index
-        self.batch = bi  # batch index of image
+        self.batch_indices = bi  # batch index of image
         self.n = n
         self.indices = range(n)
 
@@ -462,11 +463,14 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
 
         hyp = self.hyp
         # Load image
-        img, (h0, w0), (h, w) = load_image(self, index)
+        img, (h0, w0) = load_and_reshape_image(
+            self.img_files[index], self.img_size, self.augment
+        )
+        h, w = img.shape[:2]
 
         # Letterbox
         shape = (
-            self.batch_shapes[self.batch[index]] if self.rect else self.img_size
+            self.batch_shapes[self.batch_indices[index]] if self.rect else self.img_size
         )  # final letterboxed shape
         img, ratio, pad = letterbox(img, shape, auto=False, scaleup=self.augment)
         shapes = (h0, w0), ((h / h0, w / w0), pad)  # for COCO mAP rescaling
@@ -620,24 +624,6 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
 
 
 # Ancillary functions --------------------------------------------------------------------------------------------------
-def load_image(self, i):
-    # loads 1 image from dataset index 'i', returns im, original hw, resized hw
-    path = self.img_files[i]
-    im = cv2.imread(path)  # BGR
-    assert im is not None, "Image Not Found " + path
-    h0, w0 = im.shape[:2]  # orig hw
-    r = self.img_size / max(h0, w0)  # ratio
-    if r != 1:  # if sizes are not equal
-        im = cv2.resize(
-            im,
-            (int(w0 * r), int(h0 * r)),
-            interpolation=cv2.INTER_AREA
-            if r < 1 and not self.augment
-            else cv2.INTER_LINEAR,
-        )
-    return im, (h0, w0), im.shape[:2]  # im, hw_original, hw_resized
-
-
 def load_mosaic(self, index, kp_bbox=None):
     # loads images in a 4-mosaic
 
@@ -649,7 +635,10 @@ def load_mosaic(self, index, kp_bbox=None):
     indices = [index] + random.choices(self.indices, k=3)  # 3 additional image indices
     for i, index in enumerate(indices):
         # Load image
-        img, _, (h, w) = load_image(self, index)
+        img, _ = load_and_reshape_image(
+            self.img_files[index], self.img_size, self.augment
+        )
+        h, w = img.shape[:2]
 
         # place img in img4
         if i == 0:  # top left
@@ -726,7 +715,10 @@ def load_mosaic9(self, index):
     indices = [index] + random.choices(self.indices, k=8)  # 8 additional image indices
     for i, index in enumerate(indices):
         # Load image
-        img, _, (h, w) = load_image(self, index)
+        img, _ = load_and_reshape_image(
+            self.img_files[index], self.img_size, self.augment
+        )
+        h, w = img.shape[:2]
 
         # place img in img9
         if i == 0:  # center
