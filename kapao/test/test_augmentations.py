@@ -13,6 +13,7 @@ import pytest
         ((800, 600), (800, 800), True, (800, 608)),
         ((800, 600), (800, 800), False, (800, 800)),
         ((640, 401), (1280, 1280), True, (1280, 832)),
+        ((641, 401), (1280, 1280), True, (1280, 832)),
     ],
 )
 def test_letterbox(original_shape, new_shape, auto, expected_shape, tmp_path):
@@ -28,8 +29,8 @@ def test_letterbox(original_shape, new_shape, auto, expected_shape, tmp_path):
         new_shape=new_shape,
         auto=auto,
     )
-    pad_w = int(half_pad_w * 2)
-    pad_h = int(half_pad_h * 2)
+    pad_w = round(half_pad_w * 2)
+    pad_h = round(half_pad_h * 2)
 
     assert (
         result_image.shape[:2] == expected_shape
