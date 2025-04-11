@@ -600,27 +600,6 @@ def xywh2xyxy(x):
     return y
 
 
-def xywhn2xyxy(x, w=640, h=640, padw=0, padh=0):
-    # Convert nx4 boxes from [x, y, w, h] normalized to [x1, y1, x2, y2] where xy1=top-left, xy2=bottom-right
-    y = x.clone() if isinstance(x, torch.Tensor) else np.copy(x)
-    y[:, 0] = w * (x[:, 0] - x[:, 2] / 2) + padw  # top left x
-    y[:, 1] = h * (x[:, 1] - x[:, 3] / 2) + padh  # top left y
-    y[:, 2] = w * (x[:, 0] + x[:, 2] / 2) + padw  # bottom right x
-    y[:, 3] = h * (x[:, 1] + x[:, 3] / 2) + padh  # bottom right y
-
-    # Convert keypoints from [x, y, v] normalized to [x, y]
-    if y.shape[-1] > 4:
-        nl = y.shape[0]
-        kp = y[:, 4:].reshape(nl, -1, 3)
-        kp[..., 0] *= w
-        kp[..., 0] += padw
-        kp[..., 1] *= h
-        kp[..., 1] += padh
-        y[:, 4:] = kp.reshape(nl, -1)
-
-    return y
-
-
 def xyxy2xywhn(x, w=640, h=640, clip=False, eps=0.0):
     # Convert nx4 boxes from [x1, y1, x2, y2] to [x, y, w, h] normalized where xy1=top-left, xy2=bottom-right
     if clip:
