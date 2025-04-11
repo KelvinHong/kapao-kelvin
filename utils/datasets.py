@@ -460,8 +460,6 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
 
     def __getitem__(self, index):
         index = self.indices[index]  # linear, shuffled, or image_weights
-
-        hyp = self.hyp
         # Load image
         img, (h0, w0) = load_and_reshape_image(
             self.img_files[index], self.img_size, self.augment
@@ -477,91 +475,20 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
 
         labels = self.labels[index].copy()  # Shape (N, 3K+5)
 
-        if labels.size > 0:  # normalized xywh to pixel xyxy format
+        # TODO: After taking out augment (as the github page claimed they trained without augmentation)
+        # Labels seems to be back n forth to original format
+        # But they are slightly different because xyxy2xywhn doesn't consider padding.
+        # We keep this behavior for the sake of reproducibility.
+
+        nl = len(labels)  # number of labels
+        labels_out = torch.zeros((nl, labels.shape[-1] + 1))
+        if nl > 0:  # normalized xywh to pixel xyxy format
             labels[:, 1:] = xywhn2xyxy(
                 labels[:, 1:], ratio[0] * w, ratio[1] * h, padw=pad[0], padh=pad[1]
             )
-
-        if self.augment:
-            img, labels = random_perspective(
-                img,
-                labels,
-                degrees=hyp["degrees"],
-                translate=hyp["translate"],
-                scale=hyp["scale"],
-                shear=hyp["shear"],
-                perspective=hyp["perspective"],
-                kp_bbox=self.kp_bbox,
-            )
-
-        nl = len(labels)  # number of labels
-        if nl:
             labels[:, 1:] = xyxy2xywhn(
                 labels[:, 1:], w=img.shape[1], h=img.shape[0], clip=True, eps=1e-3
             )
-
-        if self.augment:
-            # Albumentations
-            img, labels = self.albumentations(img, labels)
-            nl = len(labels)  # update after albumentations
-
-            # HSV color-space
-            augment_hsv(img, hgain=hyp["hsv_h"], sgain=hyp["hsv_s"], vgain=hyp["hsv_v"])
-
-            # Flip up-down
-            if random.random() < hyp["flipud"]:
-                img = np.flipud(img)
-                if nl:
-                    labels[:, 2] = 1 - labels[:, 2]
-
-            # Flip left-right
-            if random.random() < hyp["fliplr"]:
-                img = np.fliplr(img)
-                if nl:
-                    labels[:, 1] = 1 - labels[:, 1]
-
-                    if self.kp_flip and labels.shape[1] > 5:
-                        labels[:, 5::3] = (
-                            1 - labels[:, 5::3]
-                        )  # flip keypoints in person object
-                        keypoints = labels[:, 5:].reshape(nl, -1, 3)
-                        keypoints = keypoints[
-                            :, self.kp_flip
-                        ]  # reorder left / right keypoints
-                        labels[:, 5:] = keypoints.reshape(nl, -1)
-
-                    if self.obj_flip:
-                        for i, cls in enumerate(labels[:, 0]):
-                            labels[i, 0] = self.obj_flip[labels[i, 0]]
-
-        # img_h, img_w = img.shape[:2]
-        # img = img.copy()
-        # person_obj = labels[labels[:, 0] == 0]
-        # for lbl in person_obj:
-        #     xc, yc, w, h = lbl[1:5].copy()
-        #     pt1 = (int((xc - w / 2) * img_w), int((yc - h / 2) * img_h))
-        #     pt2 = (int((xc + w / 2) * img_w), int((yc + h / 2) * img_h))
-        #     cv2.rectangle(img, pt1, pt2, (255, 0, 255), thickness=2)
-        #
-        #     kp = lbl[5:]
-        #     kp = np.array(kp).reshape(-1, 3)
-        #     kp[:, 0] = kp[:, 0] * img_w
-        #     kp[:, 1] = kp[:, 1] * img_h
-        #     for i, (x, y, v) in enumerate(kp):
-        #         if v:
-        #             if i in COCO_KP_LEFT:
-        #                 color = (0, 255, 255)
-        #             else:
-        #                 color = (255, 255, 0)
-        #             cv2.circle(img, (int(round(x)), int(round(y))), 2, color, thickness=2)
-        #             # cv2.putText(img, COCO_KP_NAMES_SHORT[i], (int(round(x + 10)), int(round(y + 10))),
-        #             #             cv2.FONT_HERSHEY_PLAIN, 1, (255, 255, 0), thickness=1)
-        # cv2.imshow('', img)
-        # cv2.waitKey(0)
-        # cv2.destroyAllWindows()
-
-        labels_out = torch.zeros((nl, labels.shape[-1] + 1))
-        if nl:
             labels_out[:, 1:] = torch.from_numpy(labels)
         # Convert
         img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
