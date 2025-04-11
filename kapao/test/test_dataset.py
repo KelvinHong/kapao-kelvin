@@ -150,6 +150,12 @@ def test_read_samples(tmp_path, image_with_label):
             np.array([[1280, 1280], [1280, 960]]),
             np.array([2, 1, 3, 0]),
         ),
+        (
+            np.array([[640, 400], [640, 600]]),
+            2,
+            np.array([[1216, 1280]]),
+            np.array([0, 1]),
+        ),
     ],
 )
 def test_reorder_rectangle_shapes(
