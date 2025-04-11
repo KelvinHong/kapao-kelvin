@@ -23,12 +23,16 @@ def test_letterbox(original_shape, new_shape, auto, expected_shape, tmp_path):
     img.save(path)
     numpy_image = np.array(img)
 
-    result_image = letterbox(
+    result_image, (scale_w, scale_h), (half_pad_w, half_pad_h) = letterbox(
         numpy_image,
         new_shape=new_shape,
         auto=auto,
-    )[0]
+    )
+    pad_w = int(half_pad_w * 2)
+    pad_h = int(half_pad_h * 2)
 
     assert (
         result_image.shape[:2] == expected_shape
     ), f"Expected {expected_shape}, but got {result_image.shape[:2]}"
+    assert round(original_shape[0] * scale_h) == result_image.shape[0] - pad_h
+    assert round(original_shape[1] * scale_w) == result_image.shape[1] - pad_w
