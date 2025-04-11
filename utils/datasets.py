@@ -16,7 +16,7 @@ from multiprocessing.pool import ThreadPool, Pool
 from pathlib import Path
 from threading import Thread
 import pdb
-
+from typing import Tuple
 import cv2
 import numpy as np
 import torch
@@ -458,7 +458,29 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
     #     #self.shuffled_vector = np.random.permutation(self.nF) if self.augment else np.arange(self.nF)
     #     return self
 
-    def __getitem__(self, index):
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor, str, Tuple]:
+        """Dataset get item by index.
+
+        Args:
+            index (int): Index of the sample.
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor, str, Tuple]:
+                - img (torch.Tensor): Letterboxed image tensor, shape [3, H, W].
+                - labels (torch.Tensor): Labels tensor, shape [N, 3*K+5], corresponding to the letterboxed image.
+                    There are N superobjects and keypoints altogether,
+                    In 3*K+5, the first is class_id (0=superobject, 1~K=keypoint)
+                    The second is cx, cy, w, h of the superobject bounding box, normalized.
+                    The rest is xi, yi, vi the keypoints, normalized.
+                - path (str): Path to the image file.
+                - shapes (Tuple): Original and letterbox shapes. this is (h0, w0), ((h/h0, w/w0), pad),
+                    where (h0, w0) is the image's original shape,
+                    (h, w) is the image's reshaped shape (after loading & reshape but before letterboxing),
+                    pad is (padw, padh), the padding added to the image.
+                    From these we have full information on how image dimension changes
+                    from original -> reshape -> letterboxed.
+                    (Note that (h,w) is not necessarily the letterboxed shape when rectangular training is enabled.)
+        """
         index = self.indices[index]  # linear, shuffled, or image_weights
         # Load image
         img, (h0, w0) = load_and_reshape_image(
@@ -479,6 +501,8 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         # Labels seems to be back n forth to original format
         # But they are slightly different because xyxy2xywhn doesn't consider padding.
         # We keep this behavior for the sake of reproducibility.
+        # (This behavior seems because letterbox was only applied on pre-processing but not on post-processing,
+        # so it was simply resized to the original size afterward. LGTM and understandable.)
 
         nl = len(labels)  # number of labels
         labels_out = torch.zeros((nl, labels.shape[-1] + 1))
