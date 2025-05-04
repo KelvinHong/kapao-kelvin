@@ -1,10 +1,17 @@
 from PIL import Image
 from typing import Tuple, List, Dict, Any
+import torch
 from torch.utils.data.dataloader import DataLoader
 import os
+from torch.utils.data import Dataset
 import numpy as np
 import cv2
 from pathlib import Path
+from contextlib import contextmanager
+
+
+from .augmentations import letterbox
+from .utils import xywhn2xyxy, xyxy2xywhn
 
 # The key for ExifTags Orientation:
 # https://github.com/python-pillow/Pillow/blob/bca693bd82ce1dab40a375d101c5292e3a275143/src/PIL/ExifTags.py#L40
@@ -339,3 +346,141 @@ def load_and_reshape_image(
             interpolation_method,
         )
     return img, (original_h, original_w)
+
+
+class LoadImagesAndLabels(Dataset):  # for training/testing
+    def __init__(
+        self,
+        path,
+        labels_dir="labels",
+        img_size=640,
+        batch_size=16,
+        augment=False,
+        hyp=None,
+        rect=False,
+        image_weights=False,
+        cache_images=False,
+        stride=32,
+        pad=0.0,
+        prefix="",
+        kp_flip=None,
+        kp_bbox=None,
+    ):
+        self.labels_dir = labels_dir
+        self.img_size = img_size
+        self.augment = augment
+        self.hyp = hyp
+        self.image_weights = image_weights
+        self.rect = False if image_weights else rect
+        self.mosaic = (
+            self.augment and not self.rect
+        )  # load 4 images at a time into a mosaic (only during training)
+        self.mosaic_border = [-img_size // 2, -img_size // 2]
+        self.stride = stride
+        self.path = Path(path)
+        self.kp_flip = kp_flip
+        self.kp_bbox = kp_bbox
+        self.num_coords = len(kp_flip) * 2
+
+        self.obj_flip = None if self.kp_flip is None else convert_flip(self.kp_flip)
+
+        image_and_labels = read_samples(
+            self.path, self.num_coords, labels_dir=self.labels_dir
+        )
+
+        # Read cache
+        [image_and_labels.pop(k) for k in ("version", "results")]  # remove items
+        labels, shapes, self.segments = zip(*image_and_labels.values())
+        self.labels = list(labels)
+        self.shapes = np.array(shapes, dtype=np.float64)  # wh
+        self.img_files = list(image_and_labels.keys())
+        self.label_files = img2label_paths(self.img_files, labels_dir=self.labels_dir)
+
+        n = len(shapes)  # number of images
+        bi = np.floor(np.arange(n) / batch_size).astype(int)  # batch index
+        self.batch_indices = bi  # batch index of image
+        self.n = n
+        self.indices = range(n)
+
+        # Rectangular Training
+        # Reorder the images so that letterbox will apply the least padding possible in the same batch.
+        if self.rect:
+            self.batch_shapes, reorder_indices = reorder_rectangle_shapes(
+                self.shapes, batch_size, img_size, stride, padding=pad
+            )
+            self.img_files = [self.img_files[i] for i in reorder_indices]
+            self.label_files = [self.label_files[i] for i in reorder_indices]
+            self.labels = [self.labels[i] for i in reorder_indices]
+            self.shapes = self.shapes[reorder_indices]
+
+    def __len__(self):
+        return len(self.img_files)
+
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor, str, Tuple]:
+        """Dataset get item by index.
+
+        Args:
+            index (int): Index of the sample.
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor, str, Tuple]:
+                - img (torch.Tensor): Letterboxed image tensor, shape [3, H, W].
+                - labels (torch.Tensor): Labels tensor, shape [N, 3*K+5], corresponding to the letterboxed image.
+                    There are N superobjects and keypoints altogether,
+                    In 3*K+5, the first is class_id (0=superobject, 1~K=keypoint)
+                    The second is cx, cy, w, h of the superobject bounding box, normalized.
+                    The rest is xi, yi, vi the keypoints, normalized.
+                - path (str): Path to the image file.
+                - shapes (Tuple): Original and letterbox shapes. this is (h0, w0), ((h/h0, w/w0), pad),
+                    where (h0, w0) is the image's original shape,
+                    (h, w) is the image's reshaped shape (after loading & reshape but before letterboxing),
+                    pad is (padw, padh), the padding added to the image.
+                    From these we have full information on how image dimension changes
+                    from original -> reshape -> letterboxed.
+                    (Note that (h,w) is not necessarily the letterboxed shape when rectangular training is enabled.)
+        """
+        index = self.indices[index]  # linear, shuffled, or image_weights
+        # Load image
+        img, (h0, w0) = load_and_reshape_image(
+            self.img_files[index], self.img_size, self.augment
+        )
+        h, w = img.shape[:2]
+
+        # Letterbox
+        shape = (
+            self.batch_shapes[self.batch_indices[index]] if self.rect else self.img_size
+        )  # final letterboxed shape
+        img, ratio, pad = letterbox(img, shape, auto=False, scaleup=self.augment)
+        shapes = (h0, w0), ((h / h0, w / w0), pad)  # for COCO mAP rescaling
+
+        labels = self.labels[index].copy()  # Shape (N, 3K+5)
+
+        # TODO: After taking out augment (as the github page claimed they trained without augmentation)
+        # Labels seems to be back n forth to original format
+        # But they are slightly different because xyxy2xywhn doesn't consider padding.
+        # We keep this behavior for the sake of reproducibility.
+        # (This behavior seems because letterbox was only applied on pre-processing but not on post-processing,
+        # so it was simply resized to the original size afterward. LGTM and understandable.)
+
+        nl = len(labels)  # number of labels
+        labels_out = torch.zeros((nl, labels.shape[-1] + 1))
+        if nl > 0:  # normalized xywh to pixel xyxy format
+            labels[:, 1:] = xywhn2xyxy(
+                labels[:, 1:], ratio[0] * w, ratio[1] * h, padw=pad[0], padh=pad[1]
+            )
+            labels[:, 1:] = xyxy2xywhn(
+                labels[:, 1:], w=img.shape[1], h=img.shape[0], clip=True, eps=1e-3
+            )
+            labels_out[:, 1:] = torch.from_numpy(labels)
+        # Convert
+        img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
+        img = np.ascontiguousarray(img)
+
+        return torch.from_numpy(img), labels_out, self.img_files[index], shapes
+
+    @staticmethod
+    def collate_fn(batch):
+        img, label, path, shapes = zip(*batch)  # transposed
+        for i, l in enumerate(label):
+            l[:, 0] = i  # add target image index for build_targets()
+        return torch.stack(img, 0), torch.cat(label, 0), path, shapes
