@@ -38,7 +38,6 @@ from utils.general import (
     check_file,
     check_dataset,
     xywh2xyxy,
-    xyxy2xywhn,
     xyn2xy,
     segments2boxes,
     clean_str,
@@ -56,7 +55,7 @@ from kapao.dataset import (
     load_and_reshape_image,
 )
 from kapao.augmentations import letterbox
-from kapao.utils import xywhn2xyxy
+from kapao.utils import xywhn2xyxy, xyxy2xywhn
 
 # Parameters
 HELP_URL = "https://github.com/ultralytics/yolov5/wiki/Train-Custom-Data"
