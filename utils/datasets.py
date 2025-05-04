@@ -87,7 +87,6 @@ def create_dataloader(
     rank=-1,
     workers=8,
     image_weights=False,
-    quad=False,
     prefix="",
     kp_flip=None,
     kp_bbox=None,
@@ -131,9 +130,7 @@ def create_dataloader(
         num_workers=nw,
         sampler=sampler,
         pin_memory=True,
-        collate_fn=LoadImagesAndLabels.collate_fn4
-        if quad
-        else LoadImagesAndLabels.collate_fn,
+        collate_fn=LoadImagesAndLabels.collate_fn,
     )
     return dataloader, dataset
 
@@ -525,53 +522,6 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         for i, l in enumerate(label):
             l[:, 0] = i  # add target image index for build_targets()
         return torch.stack(img, 0), torch.cat(label, 0), path, shapes
-
-    @staticmethod
-    def collate_fn4(batch):
-        img, label, path, shapes = zip(*batch)  # transposed
-        n = len(shapes) // 4
-        img4, label4, path4, shapes4 = [], [], path[:n], shapes[:n]
-
-        ho = torch.tensor([[0.0, 0, 0, 1, 0, 0]])
-        wo = torch.tensor([[0.0, 0, 1, 0, 0, 0]])
-        s = torch.tensor([[1, 1, 0.5, 0.5, 0.5, 0.5]])  # scale
-        for i in range(n):  # zidane torch.zeros(16,3,720,1280)  # BCHW
-            i *= 4
-            if random.random() < 0.5:
-                im = F.interpolate(
-                    img[i].unsqueeze(0).float(),
-                    scale_factor=2.0,
-                    mode="bilinear",
-                    align_corners=False,
-                )[0].type(img[i].type())
-                l = label[i]
-            else:
-                im = torch.cat(
-                    (
-                        torch.cat((img[i], img[i + 1]), 1),
-                        torch.cat((img[i + 2], img[i + 3]), 1),
-                    ),
-                    2,
-                )
-                l = (
-                    torch.cat(
-                        (
-                            label[i],
-                            label[i + 1] + ho,
-                            label[i + 2] + wo,
-                            label[i + 3] + ho + wo,
-                        ),
-                        0,
-                    )
-                    * s
-                )
-            img4.append(im)
-            label4.append(l)
-
-        for i, l in enumerate(label4):
-            l[:, 0] = i  # add target image index for build_targets()
-
-        return torch.stack(img4, 0), torch.cat(label4, 0), path4, shapes4
 
 
 # Ancillary functions --------------------------------------------------------------------------------------------------

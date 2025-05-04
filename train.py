@@ -303,7 +303,6 @@ def train(
         rank=RANK,
         workers=workers,
         image_weights=opt.image_weights,
-        quad=opt.quad,
         prefix=colorstr("train: "),
         kp_flip=kp_flip,
         kp_bbox=kp_bbox,
