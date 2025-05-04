@@ -86,13 +86,9 @@ def create_dataloader(
             augment=augment,  # augment images
             hyp=hyp,  # augmentation hyperparameters
             rect=rect,  # rectangular training
-            cache_images=cache,
             stride=int(stride),
             pad=pad,
-            image_weights=image_weights,
-            prefix=prefix,
             kp_flip=kp_flip,
-            kp_bbox=kp_bbox,
         )
 
         # for i in range(10):

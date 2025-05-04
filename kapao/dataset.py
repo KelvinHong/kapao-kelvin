@@ -352,37 +352,28 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
     def __init__(
         self,
         path,
-        labels_dir="labels",
+        labels_dir,
         img_size=640,
         batch_size=16,
         augment=False,
         hyp=None,
         rect=False,
-        image_weights=False,
-        cache_images=False,
         stride=32,
         pad=0.0,
-        prefix="",
         kp_flip=None,
-        kp_bbox=None,
     ):
         self.labels_dir = labels_dir
         self.img_size = img_size
         self.augment = augment
         self.hyp = hyp
-        self.image_weights = image_weights
-        self.rect = False if image_weights else rect
+        self.rect = rect
         self.mosaic = (
             self.augment and not self.rect
         )  # load 4 images at a time into a mosaic (only during training)
         self.mosaic_border = [-img_size // 2, -img_size // 2]
         self.stride = stride
         self.path = Path(path)
-        self.kp_flip = kp_flip
-        self.kp_bbox = kp_bbox
         self.num_coords = len(kp_flip) * 2
-
-        self.obj_flip = None if self.kp_flip is None else convert_flip(self.kp_flip)
 
         image_and_labels = read_samples(
             self.path, self.num_coords, labels_dir=self.labels_dir
