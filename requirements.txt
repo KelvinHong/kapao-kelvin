@@ -7,7 +7,7 @@ opencv-python~=4.11.0.86
 Pillow~=11.1.0
 PyYAML~=6.0.2
 scipy~=1.15.2
-torch~=2.6.90
+torch~=2.6.0
 torchvision~=0.21.0
 tqdm~=4.67.1
 
@@ -38,3 +38,5 @@ thop~=0.1.1  # FLOPs computation
 pre-commit~=4.2.0
 pytest~=8.3.5
 pytest-cov~=6.0.0
+
+requests~=2.32.3
