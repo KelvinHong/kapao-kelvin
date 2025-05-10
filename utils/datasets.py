@@ -81,14 +81,13 @@ def create_dataloader(
         dataset = LoadImagesAndLabels(
             path,
             labels_dir,
+            len(kp_flip),
             imgsz,
             batch_size,
             augment=augment,  # augment images
-            hyp=hyp,  # augmentation hyperparameters
             rect=rect,  # rectangular training
             stride=int(stride),
             pad=pad,
-            kp_flip=kp_flip,
         )
 
         # for i in range(10):
@@ -698,7 +697,9 @@ def dataset_stats(
             continue
         x = []
         dataset = LoadImagesAndLabels(
-            data[split], labels_dir=labels_dir
+            data[split],
+            labels_dir=labels_dir,
+            num_keypoints=0,  # num_keypoints not important
         )  # load dataset
         for label in tqdm(dataset.labels, total=dataset.n, desc="Statistics"):
             x.append(np.bincount(label[:, 0].astype(int), minlength=data["nc"]))

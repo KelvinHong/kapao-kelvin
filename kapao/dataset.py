@@ -324,6 +324,8 @@ def load_and_reshape_image(
     we only use INTER_AREA interpolation when shrinking & validating.
     Everything else uses INTER_LINEAR interpolation.
 
+    Augment flag only affects the interpolation method, no special extra augmentations are applied.
+
     Args:
         image_path (str): Path to the image file.
         input_size (int): Desired input size for the model.
@@ -348,32 +350,45 @@ def load_and_reshape_image(
     return img, (original_h, original_w)
 
 
-class LoadImagesAndLabels(Dataset):  # for training/testing
+class LoadImagesAndLabels(Dataset):
     def __init__(
         self,
-        path,
-        labels_dir,
-        img_size=640,
-        batch_size=16,
-        augment=False,
-        hyp=None,
-        rect=False,
-        stride=32,
-        pad=0.0,
-        kp_flip=None,
+        path: str,
+        labels_dir: str,
+        num_keypoints: int,
+        img_size: int = 640,
+        batch_size: int = 16,
+        augment: bool = False,
+        rect: bool = False,
+        stride: int = 32,
+        pad: int = 0.0,
     ):
+        """Dataset for KAPAO Keypoint Detection.
+        We keep this the original implementation from KAPAO.
+        Will refactor to CVATKeypointDataset later.
+
+        Args:
+            path (str): A .txt filepath containing paths (line-by-line) to images.
+            labels_dir (str): A subdirectory to the labels directory. See code for details.
+            num_keypoints (int): Number of keypoints.
+            img_size (int, optional): The target size to be resized to. Defaults to 640.
+            batch_size (int, optional): Batch size. Defaults to 16.
+                Note the dataset doesn't really use the batch size in any real way,
+                it just helps calculation of self.batch_indices.
+            augment (bool, optional): Augment or not. Defaults to False.
+                After examine the code in details, it seems augment is only used for interpolation method,
+                which mean we can change `augment: bool` to `is_train: bool`.
+            rect (bool, optional): If True, dataset will give image in rectangle shape when applicable. Defaults to False.
+            stride (int, optional): Stride of the model. Defaults to 32.
+            pad (float, optional): Padding of the image. Defaults to 0.0.
+        """
+        self.path = Path(path)
         self.labels_dir = labels_dir
+        self.num_coords = num_keypoints * 2
         self.img_size = img_size
         self.augment = augment
-        self.hyp = hyp
         self.rect = rect
-        self.mosaic = (
-            self.augment and not self.rect
-        )  # load 4 images at a time into a mosaic (only during training)
-        self.mosaic_border = [-img_size // 2, -img_size // 2]
         self.stride = stride
-        self.path = Path(path)
-        self.num_coords = len(kp_flip) * 2
 
         image_and_labels = read_samples(
             self.path, self.num_coords, labels_dir=self.labels_dir
