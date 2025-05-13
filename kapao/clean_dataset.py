@@ -7,6 +7,9 @@ import torch
 import numpy as np
 from kapao.dataset import reorder_rectangle_shapes
 import cv2
+import albumentations as alb
+from albumentations import LongestMaxSize
+import cv2
 
 
 class COCOPose(BaseModel):
@@ -54,6 +57,8 @@ class COCOKeypointDataset(Dataset):
             raise ValueError(
                 f"image_size {image_size} must be multiple of stride {stride}"
             )
+        self.image_size = image_size
+        self.stride = stride
 
         # self.images will have bbox and poses of normalized values.
         # Still adhere to COCO format (XYWH), but we purely normalize the values.
@@ -125,6 +130,12 @@ class COCOKeypointDataset(Dataset):
             self.shapes = self.shapes[reorder_indices]
             self.image_order = [self.image_order[i] for i in reorder_indices]
 
+        self.transform = alb.Compose(
+            transforms = [
+                LongestMaxSize(max_size=self.image_size, interpolation=cv2.INTER_LINEAR),
+            ]
+        )
+
     def __len__(self):
         return len(self.image_order)
 
@@ -134,16 +145,38 @@ class COCOKeypointDataset(Dataset):
         image_array = cv2.imread(image.file_name)
         image_array = cv2.cvtColor(image_array, cv2.COLOR_BGR2RGB)
         return image_array
+    
+    def _read_label(self, index):
+        # Return [N, 3*K+5]
+        # (class_id, cx, cy, w, h, x1, y1, v1, ..., xK, yK, vK)
+        image_id = self.image_order[index]
+        image = self.images[image_id]
+        labels = []
+        for pose in image.poses:
+            # single superobject bro!
+            labels.append(
+                [0.0] + pose.bbox + pose.keypoints
+            )
+        return np.array(labels)
+    
+    def __getitem__(self, index: int) -> Dict[str, torch.Tensor]:
+        """Get item.
 
+        Parameters
+        ----------
+        index : int
+            Index
 
-if __name__ == "__main__":
-    dataset = COCOKeypointDataset(
-        json_path="data/datasets/coco/annotations/person_keypoints_val2017_mini.json",
-        image_dir="data/datasets/coco/images/val2017",
-        num_keypoints=17,
-        image_size=1280,
-        batch_size=4,
-        rect=True,
-        stride=64,
-    )
-    breakpoint()
+        Returns
+        -------
+        Dict[str, torch.Tensor]
+            "image": of shape [C, H, W]
+            "bboxes": of shape [N, 4]
+            "keypoints": of shape [N, K, 3]
+        """
+        
+
+        original_image = self._read_image(index)
+        loaded_image = self.transform(image=original_image)["image"]
+        original_label = self._read_label(index)
+
