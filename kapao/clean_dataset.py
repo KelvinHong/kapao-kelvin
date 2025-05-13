@@ -6,10 +6,11 @@ from typing import List, Dict, Annotated
 import torch
 import numpy as np
 from kapao.dataset import reorder_rectangle_shapes
+from kapao.augmentations import letterbox
+from kapao.utils import xywhn2xyxy
 import cv2
 import albumentations as alb
-from albumentations import LongestMaxSize
-import cv2
+from albumentations import LongestMaxSize, Normalize, ToTensorV2
 
 
 class COCOPose(BaseModel):
@@ -84,11 +85,14 @@ class COCOKeypointDataset(Dataset):
                 raise ValueError(f"Image ID {image_id} not found in images.")
             width, height = self.images[image_id].width, self.images[image_id].height
 
+            # Following pose_bbox will be in YOLO format, which means cx, cy, w, h.
             pose_bbox = annotation["bbox"]
             pose_bbox[0] /= width
             pose_bbox[1] /= height
             pose_bbox[2] /= width
             pose_bbox[3] /= height
+            pose_bbox[0] += pose_bbox[2] / 2
+            pose_bbox[1] += pose_bbox[3] / 2
 
             pose_kpts = torch.tensor(
                 annotation["keypoints"], dtype=torch.float32
@@ -130,10 +134,24 @@ class COCOKeypointDataset(Dataset):
             self.shapes = self.shapes[reorder_indices]
             self.image_order = [self.image_order[i] for i in reorder_indices]
 
-        self.transform = alb.Compose(
-            transforms = [
-                LongestMaxSize(max_size=self.image_size, interpolation=cv2.INTER_LINEAR),
-            ]
+        bbox_params = alb.BboxParams(format="yolo")
+        self.pre_transform = alb.Compose(
+            transforms=[
+                LongestMaxSize(
+                    max_size=self.image_size, interpolation=cv2.INTER_LINEAR
+                ),
+            ],
+            bbox_params=bbox_params,
+        )
+        self.end_transform = alb.Compose(
+            [
+                Normalize(
+                    mean=(0.0, 0.0, 0.0),
+                    std=(1.0, 1.0, 1.0),
+                ),
+                ToTensorV2(),
+            ],
+            bbox_params=bbox_params,
         )
 
     def __len__(self):
@@ -145,20 +163,18 @@ class COCOKeypointDataset(Dataset):
         image_array = cv2.imread(image.file_name)
         image_array = cv2.cvtColor(image_array, cv2.COLOR_BGR2RGB)
         return image_array
-    
+
     def _read_label(self, index):
-        # Return [N, 3*K+5]
+        # Return [N, 3*K+5] with YOLO format of bounding box (cxcywh).
         # (class_id, cx, cy, w, h, x1, y1, v1, ..., xK, yK, vK)
         image_id = self.image_order[index]
         image = self.images[image_id]
         labels = []
         for pose in image.poses:
             # single superobject bro!
-            labels.append(
-                [0.0] + pose.bbox + pose.keypoints
-            )
+            labels.append([0.0] + pose.bbox + pose.keypoints)
         return np.array(labels)
-    
+
     def __getitem__(self, index: int) -> Dict[str, torch.Tensor]:
         """Get item.
 
@@ -174,9 +190,28 @@ class COCOKeypointDataset(Dataset):
             "bboxes": of shape [N, 4]
             "keypoints": of shape [N, K, 3]
         """
-        
-
         original_image = self._read_image(index)
-        loaded_image = self.transform(image=original_image)["image"]
         original_label = self._read_label(index)
 
+        pre_transformed = self.pre_transform(
+            image=original_image, bboxes=original_label[:, 1:5]
+        )
+        loaded_image = pre_transformed["image"]
+        loaded_bbox = pre_transformed["bboxes"]
+        # TODO: implement this place correctly.
+        batch_shape = (
+            self.batch_shapes[self.batch_indices[index]]
+            if self.rect
+            else self.image_size
+        )
+        loaded_image, (scale_w, scale_h), (pad_w, pad_h) = letterbox(
+            loaded_image, batch_shape, auto=False, scaleup=self.training
+        )
+
+        final_transformed = self.end_transform(image=loaded_image)["image"]
+
+        num_labels = original_label.shape[0]
+
+        return {
+            "image": loaded_image,
+        }

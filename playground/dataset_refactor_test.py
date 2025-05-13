@@ -29,5 +29,14 @@ if __name__ == "__main__":
         rect=rect,
         stride=stride,
     )
-    label1 = new_dataset._read_label(1)
-    breakpoint()
+    assert len(new_dataset) == len(
+        old_dataset
+    ), f"Length mismatch: {len(new_dataset)} vs {len(old_dataset)}"
+    for ind in range(len(new_dataset))[1:2]:
+        new_image = new_dataset[ind]["image"]
+        old_image = old_dataset[ind][0]
+        assert (
+            new_image.shape == old_image.shape
+        ), f"Shape mismatch: {new_image.shape} vs {old_image.shape}"
+        print("new_image.shape", new_image.shape)
+        print("old_image.shape", old_image.shape)
