@@ -41,3 +41,4 @@ pytest-cov~=6.0.0
 
 pydantic
 requests~=2.32.3
+albumentations~=2.0.6
