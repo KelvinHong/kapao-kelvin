@@ -173,6 +173,8 @@ class COCOKeypointDataset(Dataset):
         for pose in image.poses:
             # single superobject bro!
             labels.append([0.0] + pose.bbox + pose.keypoints)
+        if labels == []:
+            return np.zeros((0, 3 * self.num_keypoints + 5), dtype=np.float32)
         return np.array(labels)
 
     def __getitem__(self, index: int) -> Dict[str, torch.Tensor]:
@@ -197,6 +199,7 @@ class COCOKeypointDataset(Dataset):
             image=original_image, bboxes=original_label[:, 1:5]
         )
         loaded_image = pre_transformed["image"]
+        pre_pad_image_w, pre_pad_image_h = loaded_image.shape[1], loaded_image.shape[0]
         loaded_bbox = pre_transformed["bboxes"]
         # TODO: implement this place correctly.
         batch_shape = (
@@ -207,11 +210,16 @@ class COCOKeypointDataset(Dataset):
         loaded_image, (scale_w, scale_h), (pad_w, pad_h) = letterbox(
             loaded_image, batch_shape, auto=False, scaleup=self.training
         )
+        post_pad_image_w, post_pad_image_h = loaded_image.shape[1], loaded_image.shape[0]
+        loaded_bbox[:, ::2] *= pre_pad_image_w / post_pad_image_w
+        loaded_bbox[:, 1::2] *= pre_pad_image_h / post_pad_image_h
+        loaded_bbox[:, 0] += pad_w / post_pad_image_w
+        loaded_bbox[:, 1] += pad_h / post_pad_image_h
 
-        final_transformed = self.end_transform(image=loaded_image)["image"]
-
-        num_labels = original_label.shape[0]
+        final_transformed = self.end_transform(image=loaded_image, bboxes=loaded_bbox)
 
         return {
-            "image": loaded_image,
+            "image": final_transformed["image"],
+            "bboxes": torch.from_numpy(final_transformed["bboxes"]).to(torch.float32),
+            "filename": os.path.basename(self.images[self.image_order[index]].file_name),
         }
