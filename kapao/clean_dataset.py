@@ -136,7 +136,7 @@ class COCOKeypointDataset(Dataset):
             self.image_order = [self.image_order[i] for i in reorder_indices]
 
         bbox_params = alb.BboxParams(format="yolo", clip=True)
-        keypoint_params = alb.KeypointParams(format='xy')
+        keypoint_params = alb.KeypointParams(format="xy")
         self.pre_transform = alb.Compose(
             transforms=[
                 LongestMaxSize(
@@ -180,12 +180,12 @@ class COCOKeypointDataset(Dataset):
         if labels == []:
             return np.zeros((0, 3 * self.num_keypoints + 5), dtype=np.float32)
         labels = np.array(labels)
-        labels = self._expand_to_kp_objects(
-            labels, image.height, image.width
-        )
+        labels = self._expand_to_kp_objects(labels, image.height, image.width)
         return labels
 
-    def _expand_to_kp_objects(self, labels: np.ndarray, image_h: int, image_w: int) -> np.ndarray:
+    def _expand_to_kp_objects(
+        self, labels: np.ndarray, image_h: int, image_w: int
+    ) -> np.ndarray:
         kp_w = self.kp_bbox * max(image_h, image_w) / image_w
         kp_h = self.kp_bbox * max(image_h, image_w) / image_h
         # TODO: we keep the order of pose instances here but it is actually unimportant
@@ -200,9 +200,11 @@ class COCOKeypointDataset(Dataset):
                         [kp_ind + 1, kp_x, kp_y, kp_w, kp_h]
                         + [0.0] * (3 * self.num_keypoints)
                     )
-        
-        return np.array(expanded_labels, dtype=np.float32)
 
+        if expanded_labels == []:
+            return np.zeros((0, 3 * self.num_keypoints + 5), dtype=np.float32)
+
+        return np.array(expanded_labels, dtype=np.float32)
 
     def __getitem__(self, index: int) -> Dict[str, torch.Tensor]:
         """Get item.
@@ -221,14 +223,26 @@ class COCOKeypointDataset(Dataset):
         """
         original_image = self._read_image(index)
         original_label = self._read_label(index)
+        num_objects = original_label.shape[0]
+        kpts_and_vis = original_label[:, 5:].reshape(-1, self.num_keypoints, 3)
+        kpts_flatten = kpts_and_vis[:, :, :2].reshape(-1, 2)
+        kpts_flatten_unnormalized = kpts_flatten.copy()
+        kpts_flatten_unnormalized[:, 0] *= original_image.shape[1]
+        kpts_flatten_unnormalized[:, 1] *= original_image.shape[0]
+        vis = kpts_and_vis[:, :, 2]
 
         pre_transformed = self.pre_transform(
-            image=original_image, bboxes=original_label[:, 1:5]
+            image=original_image,
+            bboxes=original_label[:, 1:5],
+            keypoints=kpts_flatten_unnormalized,
         )
         loaded_image = pre_transformed["image"]
         pre_pad_image_w, pre_pad_image_h = loaded_image.shape[1], loaded_image.shape[0]
         loaded_bbox = pre_transformed["bboxes"]
-        # TODO: implement this place correctly.
+        loaded_kpts_flatten_unnormalized = pre_transformed["keypoints"]
+        loaded_kpts_flatten = loaded_kpts_flatten_unnormalized.copy()
+        loaded_kpts_flatten[:, 0] /= pre_pad_image_w
+        loaded_kpts_flatten[:, 1] /= pre_pad_image_h
         batch_shape = (
             self.batch_shapes[self.batch_indices[index]]
             if self.rect
@@ -237,16 +251,37 @@ class COCOKeypointDataset(Dataset):
         loaded_image, (scale_w, scale_h), (pad_w, pad_h) = letterbox(
             loaded_image, batch_shape, auto=False, scaleup=self.training
         )
-        post_pad_image_w, post_pad_image_h = loaded_image.shape[1], loaded_image.shape[0]
+        post_pad_image_w, post_pad_image_h = (
+            loaded_image.shape[1],
+            loaded_image.shape[0],
+        )
         loaded_bbox[:, ::2] *= pre_pad_image_w / post_pad_image_w
         loaded_bbox[:, 1::2] *= pre_pad_image_h / post_pad_image_h
         loaded_bbox[:, 0] += pad_w / post_pad_image_w
         loaded_bbox[:, 1] += pad_h / post_pad_image_h
+        loaded_kpts_flatten[:, 0] *= pre_pad_image_w / post_pad_image_w
+        loaded_kpts_flatten[:, 1] *= pre_pad_image_h / post_pad_image_h
+        loaded_kpts_flatten[:, 0] += pad_w / post_pad_image_w
+        loaded_kpts_flatten[:, 1] += pad_h / post_pad_image_h
 
-        final_transformed = self.end_transform(image=loaded_image, bboxes=loaded_bbox)
+        final_transformed = self.end_transform(
+            image=loaded_image, bboxes=loaded_bbox, keypoints=loaded_kpts_flatten
+        )
+
+        final_kpts = final_transformed["keypoints"].reshape(-1, self.num_keypoints, 2)
+        final_kpts = np.concatenate(
+            [
+                final_kpts,
+                vis[:, :, np.newaxis],
+            ],
+            axis=2,
+        )
 
         return {
             "image": final_transformed["image"],
             "bboxes": torch.from_numpy(final_transformed["bboxes"]).to(torch.float32),
-            "filename": os.path.basename(self.images[self.image_order[index]].file_name),
+            "keypoints": torch.from_numpy(final_kpts).to(torch.float32),
+            "filename": os.path.basename(
+                self.images[self.image_order[index]].file_name
+            ),
         }

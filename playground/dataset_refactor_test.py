@@ -5,6 +5,7 @@ from kapao.dataset import LoadImagesAndLabels
 import torch
 import os
 from collections import defaultdict
+import numpy as np
 
 if __name__ == "__main__":
     training = True
@@ -40,13 +41,10 @@ if __name__ == "__main__":
 
     for ind in range(len(new_dataset))[:]:
         new_data = new_dataset[ind]
-        new_image = new_data["image"]
-        new_bboxes = new_data["bboxes"]
         new_path = new_data["filename"]
-        pairs[new_path]["new"] = new_data
+        pairs[new_path]["new"] = new_dataset[ind]
+
         old_data = old_dataset[ind]
-        old_image = old_data[0]
-        old_label = old_data[1]
         old_path = os.path.basename(old_data[2])
         pairs[old_path]["old"] = old_data
 
@@ -54,6 +52,7 @@ if __name__ == "__main__":
         new_data = new_old_data["new"]
         new_image = new_data["image"]
         new_bboxes = new_data["bboxes"]
+        new_keypoints = new_data["keypoints"]
         old_data = new_old_data["old"]
         old_image = old_data[0]
         old_label = old_data[1]
@@ -61,10 +60,18 @@ if __name__ == "__main__":
         assert (
             new_image.shape == old_image.shape
         ), f"Shape mismatch: {new_image.shape} vs {old_image.shape}"
+        assert (
+            new_keypoints.shape[0] == old_label.shape[0]
+        ), f"Length mismatch: {new_keypoints.shape[0]} vs {old_label.shape[0]}"
+        num_objects = new_keypoints.shape[0]
         # Check superobjects bbox
         old_superobjects = old_label[:, 2:6][old_label[:, 1] == 0]
         new_superobjects = new_bboxes[:, :4][old_label[:, 1] == 0]
         assert torch.allclose(
             new_superobjects, old_superobjects, atol=1e-4
         ), f"{ind}, {new_superobjects}, {old_superobjects}"
-
+        # Check keypoints
+        old_keypoints = old_label[:, 6:].reshape(-1, new_dataset.num_keypoints, 3)
+        assert torch.allclose(
+            new_keypoints, old_keypoints, atol=5e-4
+        ), f"{ind}, {new_keypoints}, {old_keypoints}, {(new_keypoints - old_keypoints).abs().max()}"
