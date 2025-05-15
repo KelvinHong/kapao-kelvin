@@ -63,7 +63,8 @@ if __name__ == "__main__":
         ), f"Shape mismatch: {new_image.shape} vs {old_image.shape}"
         # Check superobjects bbox
         old_superobjects = old_label[:, 2:6][old_label[:, 1] == 0]
+        new_superobjects = new_bboxes[:, :4][old_label[:, 1] == 0]
         assert torch.allclose(
-            new_bboxes[:, :4], old_superobjects, atol=1e-4
-        ), f"{ind}, {new_bboxes[:, :4]}, {old_superobjects}"
+            new_superobjects, old_superobjects, atol=1e-4
+        ), f"{ind}, {new_superobjects}, {old_superobjects}"
 

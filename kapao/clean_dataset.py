@@ -60,6 +60,7 @@ class COCOKeypointDataset(Dataset):
             )
         self.image_size = image_size
         self.stride = stride
+        self.kp_bbox = 0.05
 
         # self.images will have bbox and poses of normalized values.
         # Still adhere to COCO format (XYWH), but we purely normalize the values.
@@ -134,7 +135,8 @@ class COCOKeypointDataset(Dataset):
             self.shapes = self.shapes[reorder_indices]
             self.image_order = [self.image_order[i] for i in reorder_indices]
 
-        bbox_params = alb.BboxParams(format="yolo")
+        bbox_params = alb.BboxParams(format="yolo", clip=True)
+        keypoint_params = alb.KeypointParams(format='xy')
         self.pre_transform = alb.Compose(
             transforms=[
                 LongestMaxSize(
@@ -142,6 +144,7 @@ class COCOKeypointDataset(Dataset):
                 ),
             ],
             bbox_params=bbox_params,
+            keypoint_params=keypoint_params,
         )
         self.end_transform = alb.Compose(
             [
@@ -152,6 +155,7 @@ class COCOKeypointDataset(Dataset):
                 ToTensorV2(),
             ],
             bbox_params=bbox_params,
+            keypoint_params=keypoint_params,
         )
 
     def __len__(self):
@@ -175,7 +179,30 @@ class COCOKeypointDataset(Dataset):
             labels.append([0.0] + pose.bbox + pose.keypoints)
         if labels == []:
             return np.zeros((0, 3 * self.num_keypoints + 5), dtype=np.float32)
-        return np.array(labels)
+        labels = np.array(labels)
+        labels = self._expand_to_kp_objects(
+            labels, image.height, image.width
+        )
+        return labels
+
+    def _expand_to_kp_objects(self, labels: np.ndarray, image_h: int, image_w: int) -> np.ndarray:
+        kp_w = self.kp_bbox * max(image_h, image_w) / image_w
+        kp_h = self.kp_bbox * max(image_h, image_w) / image_h
+        # TODO: we keep the order of pose instances here but it is actually unimportant
+        expanded_labels = []
+        for superobject_id in range(labels.shape[0]):
+            superobject_instance = labels[superobject_id].copy()
+            expanded_labels.append(superobject_instance.tolist())
+            keypoints = superobject_instance[5:].reshape(-1, 3)
+            for kp_ind, (kp_x, kp_y, visibility) in enumerate(keypoints):
+                if visibility > 0:
+                    expanded_labels.append(
+                        [kp_ind + 1, kp_x, kp_y, kp_w, kp_h]
+                        + [0.0] * (3 * self.num_keypoints)
+                    )
+        
+        return np.array(expanded_labels, dtype=np.float32)
+
 
     def __getitem__(self, index: int) -> Dict[str, torch.Tensor]:
         """Get item.
