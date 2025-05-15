@@ -222,13 +222,15 @@ class COCOKeypointDataset(Dataset):
             "keypoints": of shape [N, K, 3]
         """
         original_image = self._read_image(index)
+        h0, w0 = original_image.shape[:2]
         original_label = self._read_label(index)
+        class_ids = original_label[:, 0]
         num_objects = original_label.shape[0]
         kpts_and_vis = original_label[:, 5:].reshape(-1, self.num_keypoints, 3)
         kpts_flatten = kpts_and_vis[:, :, :2].reshape(-1, 2)
         kpts_flatten_unnormalized = kpts_flatten.copy()
-        kpts_flatten_unnormalized[:, 0] *= original_image.shape[1]
-        kpts_flatten_unnormalized[:, 1] *= original_image.shape[0]
+        kpts_flatten_unnormalized[:, 0] *= w0
+        kpts_flatten_unnormalized[:, 1] *= h0
         vis = kpts_and_vis[:, :, 2]
 
         pre_transformed = self.pre_transform(
@@ -281,6 +283,13 @@ class COCOKeypointDataset(Dataset):
             "image": final_transformed["image"],
             "bboxes": torch.from_numpy(final_transformed["bboxes"]).to(torch.float32),
             "keypoints": torch.from_numpy(final_kpts).to(torch.float32),
+            "class_ids": torch.from_numpy(class_ids).to(
+                torch.float32
+            ),  # Include keypoints as objects
+            "shapes": (
+                (h0, w0),
+                ((pre_pad_image_h / h0, pre_pad_image_w / w0), (pad_w, pad_h)),
+            ),
             "filename": os.path.basename(
                 self.images[self.image_order[index]].file_name
             ),

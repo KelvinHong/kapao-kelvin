@@ -53,6 +53,7 @@ if __name__ == "__main__":
         new_image = new_data["image"]
         new_bboxes = new_data["bboxes"]
         new_keypoints = new_data["keypoints"]
+        new_class_ids = new_data["class_ids"]
         old_data = new_old_data["old"]
         old_image = old_data[0]
         old_label = old_data[1]
@@ -75,3 +76,5 @@ if __name__ == "__main__":
         assert torch.allclose(
             new_keypoints, old_keypoints, atol=5e-4
         ), f"{ind}, {new_keypoints}, {old_keypoints}, {(new_keypoints - old_keypoints).abs().max()}"
+
+        assert torch.equal(new_class_ids, old_label[:, 1])
