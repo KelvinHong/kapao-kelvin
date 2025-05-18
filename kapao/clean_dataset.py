@@ -148,10 +148,6 @@ class COCOKeypointDataset(Dataset):
         )
         self.end_transform = alb.Compose(
             [
-                Normalize(
-                    mean=(0.0, 0.0, 0.0),
-                    std=(1.0, 1.0, 1.0),
-                ),
                 ToTensorV2(),
             ],
             bbox_params=bbox_params,
@@ -323,3 +319,7 @@ class COCOKeypointDataset(Dataset):
         paths = [x["filename"] for x in batch]
         shapes = [x["shapes"] for x in batch]
         return images, labels, paths, shapes
+
+    @property
+    def labels(self):
+        return [self._read_label(index) for index in range(len(self))]

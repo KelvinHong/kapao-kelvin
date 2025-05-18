@@ -61,6 +61,7 @@ if __name__ == "__main__":
         assert (
             new_image.shape == old_image.shape
         ), f"Shape mismatch: {new_image.shape} vs {old_image.shape}"
+        assert torch.allclose(new_image, old_image), f"{ind}, {new_image}, {old_image}"
         assert (
             new_keypoints.shape[0] == old_label.shape[0]
         ), f"Length mismatch: {new_keypoints.shape[0]} vs {old_label.shape[0]}"
@@ -78,3 +79,12 @@ if __name__ == "__main__":
         ), f"{ind}, {new_keypoints}, {old_keypoints}, {(new_keypoints - old_keypoints).abs().max()}"
 
         assert torch.equal(new_class_ids, old_label[:, 1])
+
+    # Check .labels property
+    for ind in range(2):
+        new_labels = new_dataset.labels
+        old_labels = old_dataset.labels
+        assert len(new_labels) == len(
+            old_labels
+        ), f"Length mismatch: {len(new_labels)} vs {len(old_labels)}"
+        assert np.allclose(new_labels[ind], old_labels[ind])
