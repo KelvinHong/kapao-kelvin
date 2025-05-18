@@ -2,7 +2,7 @@ from torch.utils.data import Dataset
 import json
 import os
 from pydantic import BaseModel, AfterValidator, Field
-from typing import List, Dict, Annotated
+from typing import List, Dict, Annotated, Any
 import torch
 import numpy as np
 from kapao.dataset import reorder_rectangle_shapes
@@ -206,7 +206,7 @@ class COCOKeypointDataset(Dataset):
 
         return np.array(expanded_labels, dtype=np.float32)
 
-    def __getitem__(self, index: int) -> Dict[str, torch.Tensor]:
+    def __getitem__(self, index: int) -> Dict[str, Any]:
         """Get item.
 
         Parameters
@@ -216,10 +216,13 @@ class COCOKeypointDataset(Dataset):
 
         Returns
         -------
-        Dict[str, torch.Tensor]
-            "image": of shape [C, H, W]
+        Dict[str, Any]
+            "image": of shape [3, H, W]
             "bboxes": of shape [N, 4]
             "keypoints": of shape [N, K, 3]
+            "class_ids": of shape [N], where 0 is superobject, 1..K are keypoints.
+            "shapes": ((h0, w0), ((scale_h, scale_w), (pad_h, pad_w)))
+            "filename: str  # like '000000040083.jpg'
         """
         original_image = self._read_image(index)
         h0, w0 = original_image.shape[:2]
@@ -294,3 +297,29 @@ class COCOKeypointDataset(Dataset):
                 self.images[self.image_order[index]].file_name
             ),
         }
+
+    # Keep original collate format first. Once we done experiment ensure it is correct, we can refactor to dictionary output.
+    @staticmethod
+    def collate_fn(batch):
+        images = torch.stack([x["image"] for x in batch])
+        labels = []
+        for batch_index in range(len(batch)):
+            sample = batch[batch_index]
+            label_wo_image_id = torch.cat(
+                [
+                    sample["class_ids"].unsqueeze(1),
+                    sample["bboxes"],
+                    sample["keypoints"].flatten(1),
+                ],
+                dim=1,
+            )  # [N, 3*K+5]
+            num_objects = label_wo_image_id.shape[0]
+            label_image_id = torch.full(
+                (num_objects, 1), batch_index, dtype=torch.float32
+            )
+            label = torch.cat([label_image_id, label_wo_image_id], dim=1)
+            labels.append(label)
+        labels = torch.cat(labels, dim=0)
+        paths = [x["filename"] for x in batch]
+        shapes = [x["shapes"] for x in batch]
+        return images, labels, paths, shapes
