@@ -1,5 +1,5 @@
 from PIL import Image
-from typing import Tuple, List, Dict, Any
+from typing import Tuple, List, Dict, Any, Annotated
 import torch
 from torch.utils.data.dataloader import DataLoader
 import os
@@ -7,11 +7,14 @@ from torch.utils.data import Dataset
 import numpy as np
 import cv2
 from pathlib import Path
-from contextlib import contextmanager
-
+from pydantic import BaseModel, AfterValidator, Field
+import json
 
 from .augmentations import letterbox
-from .utils import xywhn2xyxy, xyxy2xywhn
+
+
+import albumentations as alb
+from albumentations import LongestMaxSize, ToTensorV2
 
 # The key for ExifTags Orientation:
 # https://github.com/python-pillow/Pillow/blob/bca693bd82ce1dab40a375d101c5292e3a275143/src/PIL/ExifTags.py#L40
@@ -350,143 +353,313 @@ def load_and_reshape_image(
     return img, (original_h, original_w)
 
 
-class LoadImagesAndLabels(Dataset):
+class COCOPose(BaseModel):
+    category_id: int = 0
+    bbox: List[float] = Field(min_length=4, max_length=4)  # xywh
+    keypoints: List[float]  # x, y, visibility
+
+
+def validate_poses(poses: List[COCOPose]) -> List[COCOPose]:
+    length_set = set()
+    for pose in poses:
+        if len(pose.keypoints) % 3 != 0:
+            raise ValueError("Keypoints must be a multiple of 3 (x, y, visibility)")
+        length_set.add(len(pose.keypoints))
+
+        if len(length_set) > 1:
+            raise ValueError("All poses must have the same number of keypoints")
+    return poses
+
+
+class COCOImage(BaseModel):
+    id: int
+    file_name: str
+    width: int
+    height: int
+    poses: Annotated[List[COCOPose], AfterValidator(validate_poses)] = Field(
+        default_factory=list
+    )
+
+
+class COCOKeypointDataset(Dataset):
     def __init__(
         self,
-        path: str,
-        labels_dir: str,
+        json_path: str,
+        image_dir: str,
         num_keypoints: int,
-        img_size: int = 640,
+        image_size: int = 640,
         batch_size: int = 16,
-        augment: bool = False,
+        training: bool = False,
         rect: bool = False,
         stride: int = 32,
         pad: int = 0.0,
     ):
-        """Dataset for KAPAO Keypoint Detection.
-        We keep this the original implementation from KAPAO.
-        Will refactor to CVATKeypointDataset later.
-
-        Args:
-            path (str): A .txt filepath containing paths (line-by-line) to images.
-            labels_dir (str): A subdirectory to the labels directory. See code for details.
-            num_keypoints (int): Number of keypoints.
-            img_size (int, optional): The target size to be resized to. Defaults to 640.
-            batch_size (int, optional): Batch size. Defaults to 16.
-                Note the dataset doesn't really use the batch size in any real way,
-                it just helps calculation of self.batch_indices.
-            augment (bool, optional): Augment or not. Defaults to False.
-                After examine the code in details, it seems augment is only used for interpolation method,
-                which mean we can change `augment: bool` to `is_train: bool`.
-            rect (bool, optional): If True, dataset will give image in rectangle shape when applicable. Defaults to False.
-            stride (int, optional): Stride of the model. Defaults to 32.
-            pad (float, optional): Padding of the image. Defaults to 0.0.
-        """
-        self.path = Path(path)
-        self.labels_dir = labels_dir
-        self.num_coords = num_keypoints * 2
-        self.img_size = img_size
-        self.augment = augment
-        self.rect = rect
+        if image_size % stride != 0:
+            raise ValueError(
+                f"image_size {image_size} must be multiple of stride {stride}"
+            )
+        self.image_size = image_size
         self.stride = stride
+        self.kp_bbox = 0.05
 
-        image_and_labels = read_samples(
-            self.path, self.num_coords, labels_dir=self.labels_dir
-        )
+        # self.images will have bbox and poses of normalized values.
+        # Still adhere to COCO format (XYWH), but we purely normalize the values.
+        with open(json_path, "r") as f:
+            data = json.load(f)
 
-        # Read cache
-        [image_and_labels.pop(k) for k in ("version", "results")]  # remove items
-        labels, shapes, self.segments = zip(*image_and_labels.values())
-        self.labels = list(labels)
-        self.shapes = np.array(shapes, dtype=np.float64)  # wh
-        self.img_files = list(image_and_labels.keys())
-        self.label_files = img2label_paths(self.img_files, labels_dir=self.labels_dir)
+        self.training = training
+        self.image_order: List[int] = [image["id"] for image in data["images"]]
+        self.images: Dict[int, COCOImage] = {
+            image["id"]: COCOImage(**image) for image in data["images"]
+        }
+        for image in self.images.values():
+            image.file_name = os.path.abspath(os.path.join(image_dir, image.file_name))
+            if not os.path.exists(image.file_name):
+                raise FileNotFoundError(
+                    f"Image file {image.file_name} does not exist, please check image directory '{image_dir}' is correct."
+                )
 
-        n = len(shapes)  # number of images
-        bi = np.floor(np.arange(n) / batch_size).astype(int)  # batch index
-        self.batch_indices = bi  # batch index of image
-        self.n = n
-        self.indices = range(n)
+        self.num_keypoints = num_keypoints
+        for annotation in data["annotations"]:
+            image_id = annotation["image_id"]
+            if image_id not in self.images:
+                raise ValueError(f"Image ID {image_id} not found in images.")
+            width, height = self.images[image_id].width, self.images[image_id].height
+
+            # Following pose_bbox will be in YOLO format, which means cx, cy, w, h.
+            pose_bbox = annotation["bbox"]
+            pose_bbox[0] /= width
+            pose_bbox[1] /= height
+            pose_bbox[2] /= width
+            pose_bbox[3] /= height
+            pose_bbox[0] += pose_bbox[2] / 2
+            pose_bbox[1] += pose_bbox[3] / 2
+
+            pose_kpts = torch.tensor(
+                annotation["keypoints"], dtype=torch.float32
+            ).reshape(-1, 3)
+            pose_kpts[:, 0] /= width
+            pose_kpts[:, 1] /= height
+            if len(pose_kpts) != self.num_keypoints:
+                raise ValueError(
+                    f"Keypoints length {len(pose_kpts)} does not match expected {self.num_keypoints}."
+                )
+
+            pose = COCOPose(
+                bbox=pose_bbox,
+                keypoints=pose_kpts.flatten().tolist(),
+            )
+
+            self.images[image_id].poses.append(pose)
+
+        self.shapes: np.ndarray = np.array(
+            [
+                [
+                    self.images[self.image_order[i]].width,
+                    self.images[self.image_order[i]].height,
+                ]
+                for i in range(len(self))
+            ]
+        ).astype(np.int64)
+
+        num_samples = len(self)
+        self.batch_indices = np.floor(np.arange(num_samples) / batch_size).astype(int)
 
         # Rectangular Training
         # Reorder the images so that letterbox will apply the least padding possible in the same batch.
+        self.rect = rect
         if self.rect:
             self.batch_shapes, reorder_indices = reorder_rectangle_shapes(
-                self.shapes, batch_size, img_size, stride, padding=pad
+                self.shapes, batch_size, image_size, stride, padding=pad
             )
-            self.img_files = [self.img_files[i] for i in reorder_indices]
-            self.label_files = [self.label_files[i] for i in reorder_indices]
-            self.labels = [self.labels[i] for i in reorder_indices]
             self.shapes = self.shapes[reorder_indices]
+            self.image_order = [self.image_order[i] for i in reorder_indices]
+
+        bbox_params = alb.BboxParams(format="yolo", clip=True)
+        keypoint_params = alb.KeypointParams(format="xy")
+        self.pre_transform = alb.Compose(
+            transforms=[
+                LongestMaxSize(
+                    max_size=self.image_size, interpolation=cv2.INTER_LINEAR
+                ),
+            ],
+            bbox_params=bbox_params,
+            keypoint_params=keypoint_params,
+        )
+        self.end_transform = alb.Compose(
+            [
+                ToTensorV2(),
+            ],
+            bbox_params=bbox_params,
+            keypoint_params=keypoint_params,
+        )
 
     def __len__(self):
-        return len(self.img_files)
+        return len(self.image_order)
 
-    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor, str, Tuple]:
-        """Dataset get item by index.
+    def _read_image(self, index):
+        image_id = self.image_order[index]
+        image = self.images[image_id]
+        image_array = cv2.imread(image.file_name)
+        image_array = cv2.cvtColor(image_array, cv2.COLOR_BGR2RGB)
+        return image_array
 
-        Args:
-            index (int): Index of the sample.
+    def _read_label(self, index):
+        # Return [N, 3*K+5] with YOLO format of bounding box (cxcywh).
+        # (class_id, cx, cy, w, h, x1, y1, v1, ..., xK, yK, vK)
+        image_id = self.image_order[index]
+        image = self.images[image_id]
+        labels = []
+        for pose in image.poses:
+            # single superobject bro!
+            labels.append([0.0] + pose.bbox + pose.keypoints)
+        if labels == []:
+            return np.zeros((0, 3 * self.num_keypoints + 5), dtype=np.float32)
+        labels = np.array(labels)
+        labels = self._expand_to_kp_objects(labels, image.height, image.width)
+        return labels
 
-        Returns:
-            Tuple[torch.Tensor, torch.Tensor, str, Tuple]:
-                - img (torch.Tensor): Letterboxed image tensor, shape [3, H, W].
-                - labels (torch.Tensor): Labels tensor, shape [N, 3*K+5], corresponding to the letterboxed image.
-                    There are N superobjects and keypoints altogether,
-                    In 3*K+5, the first is class_id (0=superobject, 1~K=keypoint)
-                    The second is cx, cy, w, h of the superobject bounding box, normalized.
-                    The rest is xi, yi, vi the keypoints, normalized.
-                - path (str): Path to the image file.
-                - shapes (Tuple): Original and letterbox shapes. this is (h0, w0), ((h/h0, w/w0), pad),
-                    where (h0, w0) is the image's original shape,
-                    (h, w) is the image's reshaped shape (after loading & reshape but before letterboxing),
-                    pad is (padw, padh), the padding added to the image.
-                    From these we have full information on how image dimension changes
-                    from original -> reshape -> letterboxed.
-                    (Note that (h,w) is not necessarily the letterboxed shape when rectangular training is enabled.)
+    def _expand_to_kp_objects(
+        self, labels: np.ndarray, image_h: int, image_w: int
+    ) -> np.ndarray:
+        kp_w = self.kp_bbox * max(image_h, image_w) / image_w
+        kp_h = self.kp_bbox * max(image_h, image_w) / image_h
+        # TODO: we keep the order of pose instances here but it is actually unimportant
+        expanded_labels = []
+        for superobject_id in range(labels.shape[0]):
+            superobject_instance = labels[superobject_id].copy()
+            expanded_labels.append(superobject_instance.tolist())
+            keypoints = superobject_instance[5:].reshape(-1, 3)
+            for kp_ind, (kp_x, kp_y, visibility) in enumerate(keypoints):
+                if visibility > 0:
+                    expanded_labels.append(
+                        [kp_ind + 1, kp_x, kp_y, kp_w, kp_h]
+                        + [0.0] * (3 * self.num_keypoints)
+                    )
+
+        if expanded_labels == []:
+            return np.zeros((0, 3 * self.num_keypoints + 5), dtype=np.float32)
+
+        return np.array(expanded_labels, dtype=np.float32)
+
+    def __getitem__(self, index: int) -> Dict[str, Any]:
+        """Get item.
+
+        Parameters
+        ----------
+        index : int
+            Index
+
+        Returns
+        -------
+        Dict[str, Any]
+            "image": of shape [3, H, W]
+            "bboxes": of shape [N, 4]
+            "keypoints": of shape [N, K, 3]
+            "class_ids": of shape [N], where 0 is superobject, 1..K are keypoints.
+            "shapes": ((h0, w0), ((scale_h, scale_w), (pad_h, pad_w)))
+            "filename: str  # like '000000040083.jpg'
         """
-        index = self.indices[index]  # linear, shuffled, or image_weights
-        # Load image
-        img, (h0, w0) = load_and_reshape_image(
-            self.img_files[index], self.img_size, self.augment
+        original_image = self._read_image(index)
+        h0, w0 = original_image.shape[:2]
+        original_label = self._read_label(index)
+        class_ids = original_label[:, 0]
+        num_objects = original_label.shape[0]
+        kpts_and_vis = original_label[:, 5:].reshape(-1, self.num_keypoints, 3)
+        kpts_flatten = kpts_and_vis[:, :, :2].reshape(-1, 2)
+        kpts_flatten_unnormalized = kpts_flatten.copy()
+        kpts_flatten_unnormalized[:, 0] *= w0
+        kpts_flatten_unnormalized[:, 1] *= h0
+        vis = kpts_and_vis[:, :, 2]
+
+        pre_transformed = self.pre_transform(
+            image=original_image,
+            bboxes=original_label[:, 1:5],
+            keypoints=kpts_flatten_unnormalized,
         )
-        h, w = img.shape[:2]
+        loaded_image = pre_transformed["image"]
+        pre_pad_image_w, pre_pad_image_h = loaded_image.shape[1], loaded_image.shape[0]
+        loaded_bbox = pre_transformed["bboxes"]
+        loaded_kpts_flatten_unnormalized = pre_transformed["keypoints"]
+        loaded_kpts_flatten = loaded_kpts_flatten_unnormalized.copy()
+        loaded_kpts_flatten[:, 0] /= pre_pad_image_w
+        loaded_kpts_flatten[:, 1] /= pre_pad_image_h
+        batch_shape = (
+            self.batch_shapes[self.batch_indices[index]]
+            if self.rect
+            else self.image_size
+        )
+        loaded_image, (scale_w, scale_h), (pad_w, pad_h) = letterbox(
+            loaded_image, batch_shape, auto=False, scaleup=self.training
+        )
+        post_pad_image_w, post_pad_image_h = (
+            loaded_image.shape[1],
+            loaded_image.shape[0],
+        )
+        loaded_bbox[:, ::2] *= pre_pad_image_w / post_pad_image_w
+        loaded_bbox[:, 1::2] *= pre_pad_image_h / post_pad_image_h
+        loaded_bbox[:, 0] += pad_w / post_pad_image_w
+        loaded_bbox[:, 1] += pad_h / post_pad_image_h
+        loaded_kpts_flatten[:, 0] *= pre_pad_image_w / post_pad_image_w
+        loaded_kpts_flatten[:, 1] *= pre_pad_image_h / post_pad_image_h
+        loaded_kpts_flatten[:, 0] += pad_w / post_pad_image_w
+        loaded_kpts_flatten[:, 1] += pad_h / post_pad_image_h
 
-        # Letterbox
-        shape = (
-            self.batch_shapes[self.batch_indices[index]] if self.rect else self.img_size
-        )  # final letterboxed shape
-        img, ratio, pad = letterbox(img, shape, auto=False, scaleup=self.augment)
-        shapes = (h0, w0), ((h / h0, w / w0), pad)  # for COCO mAP rescaling
+        final_transformed = self.end_transform(
+            image=loaded_image, bboxes=loaded_bbox, keypoints=loaded_kpts_flatten
+        )
 
-        labels = self.labels[index].copy()  # Shape (N, 3K+5)
+        final_kpts = final_transformed["keypoints"].reshape(-1, self.num_keypoints, 2)
+        final_kpts = np.concatenate(
+            [
+                final_kpts,
+                vis[:, :, np.newaxis],
+            ],
+            axis=2,
+        )
 
-        # TODO: After taking out augment (as the github page claimed they trained without augmentation)
-        # Labels seems to be back n forth to original format
-        # But they are slightly different because xyxy2xywhn doesn't consider padding.
-        # We keep this behavior for the sake of reproducibility.
-        # (This behavior seems because letterbox was only applied on pre-processing but not on post-processing,
-        # so it was simply resized to the original size afterward. LGTM and understandable.)
+        return {
+            "image": final_transformed["image"],
+            "bboxes": torch.from_numpy(final_transformed["bboxes"]).to(torch.float32),
+            "keypoints": torch.from_numpy(final_kpts).to(torch.float32),
+            "class_ids": torch.from_numpy(class_ids).to(
+                torch.float32
+            ),  # Include keypoints as objects
+            "shapes": (
+                (h0, w0),
+                ((pre_pad_image_h / h0, pre_pad_image_w / w0), (pad_w, pad_h)),
+            ),
+            "filename": os.path.basename(
+                self.images[self.image_order[index]].file_name
+            ),
+        }
 
-        nl = len(labels)  # number of labels
-        labels_out = torch.zeros((nl, labels.shape[-1] + 1))
-        if nl > 0:  # normalized xywh to pixel xyxy format
-            labels[:, 1:] = xywhn2xyxy(
-                labels[:, 1:], ratio[0] * w, ratio[1] * h, padw=pad[0], padh=pad[1]
-            )
-            labels[:, 1:] = xyxy2xywhn(
-                labels[:, 1:], w=img.shape[1], h=img.shape[0], clip=True, eps=1e-3
-            )
-            labels_out[:, 1:] = torch.from_numpy(labels)
-        # Convert
-        img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
-        img = np.ascontiguousarray(img)
-
-        return torch.from_numpy(img), labels_out, self.img_files[index], shapes
-
+    # Keep original collate format first. Once we done experiment ensure it is correct, we can refactor to dictionary output.
     @staticmethod
     def collate_fn(batch):
-        img, label, path, shapes = zip(*batch)  # transposed
-        for i, l in enumerate(label):
-            l[:, 0] = i  # add target image index for build_targets()
-        return torch.stack(img, 0), torch.cat(label, 0), path, shapes
+        images = torch.stack([x["image"] for x in batch])
+        labels = []
+        for batch_index in range(len(batch)):
+            sample = batch[batch_index]
+            label_wo_image_id = torch.cat(
+                [
+                    sample["class_ids"].unsqueeze(1),
+                    sample["bboxes"],
+                    sample["keypoints"].flatten(1),
+                ],
+                dim=1,
+            )  # [N, 3*K+5]
+            num_objects = label_wo_image_id.shape[0]
+            label_image_id = torch.full(
+                (num_objects, 1), batch_index, dtype=torch.float32
+            )
+            label = torch.cat([label_image_id, label_wo_image_id], dim=1)
+            labels.append(label)
+        labels = torch.cat(labels, dim=0)
+        paths = [x["filename"] for x in batch]
+        shapes = [x["shapes"] for x in batch]
+        return images, labels, paths, shapes
+
+    @property
+    def labels(self):
+        return [self._read_label(index) for index in range(len(self))]

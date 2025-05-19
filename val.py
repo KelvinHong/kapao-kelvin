@@ -308,8 +308,8 @@ def run(
             task if task in ("train", "val", "test") else "val"
         )  # path to train/val/test images
         dataloader = create_dataloader(
-            data[task],
-            data["labels"],
+            "data/datasets/coco/annotations/person_keypoints_val2017_mini.json",
+            "data/datasets/coco/images/val2017",
             imgsz,
             batch_size,
             gs,
