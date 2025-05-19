@@ -10,7 +10,6 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 
 from utils.general import colorstr, emojis
-from utils.loggers.wandb.wandb_utils import WandbLogger
 from utils.plots import plot_images, plot_results
 from utils.torch_utils import de_parallel
 
@@ -78,19 +77,7 @@ class Loggers:
             self.tb = SummaryWriter(str(s))
 
         # W&B
-        if wandb and "wandb" in self.include:
-            wandb_artifact_resume = isinstance(
-                self.opt.resume, str
-            ) and self.opt.resume.startswith("wandb-artifact://")
-            run_id = (
-                torch.load(self.weights).get("wandb_id")
-                if self.opt.resume and not wandb_artifact_resume
-                else None
-            )
-            self.opt.hyp = self.hyp  # add hyperparameters
-            self.wandb = WandbLogger(self.opt, run_id)
-        else:
-            self.wandb = None
+        self.wandb = None
 
     def on_pretrain_routine_end(self):
         # Callback runs on pre-train routine end
@@ -202,20 +189,3 @@ class Loggers:
                 self.tb.add_image(
                     f.stem, cv2.imread(str(f))[..., ::-1], epoch, dataformats="HWC"
                 )
-
-        if self.wandb:
-            self.wandb.log(
-                {"Results": [wandb.Image(str(f), caption=f.name) for f in files]}
-            )
-            # Calling wandb.log. TODO: Refactor this into WandbLogger.log_model
-            if not self.opt.evolve:
-                wandb.log_artifact(
-                    str(best if best.exists() else last),
-                    type="model",
-                    name="run_" + self.wandb.wandb_run.id + "_model",
-                    aliases=["latest", "best", "stripped"],
-                )
-                self.wandb.finish_run()
-            else:
-                self.wandb.finish_run()
-                self.wandb = WandbLogger(self.opt)
