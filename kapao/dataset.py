@@ -522,6 +522,24 @@ class COCOKeypointDataset(Dataset):
     def _expand_to_kp_objects(
         self, labels: np.ndarray, image_h: int, image_w: int
     ) -> np.ndarray:
+        """Labels originally contains pose instances,
+        this method expands on the instances' keypoints
+        and make them as individual objects.
+
+        Parameters
+        ----------
+        labels : np.ndarray
+            Original [N, 3K+5] ndarray.
+        image_h : int
+            Image height
+        image_w : int
+            Image width
+
+        Returns
+        -------
+        np.ndarray
+            A new [N', 3K+5] ndarray, we should have N' >= N.
+        """
         kp_w = self.kp_bbox * max(image_h, image_w) / image_w
         kp_h = self.kp_bbox * max(image_h, image_w) / image_h
         # TODO: we keep the order of pose instances here but it is actually unimportant
@@ -564,7 +582,6 @@ class COCOKeypointDataset(Dataset):
         h0, w0 = original_image.shape[:2]
         original_label = self._read_label(index)
         class_ids = original_label[:, 0]
-        num_objects = original_label.shape[0]
         kpts_and_vis = original_label[:, 5:].reshape(-1, self.num_keypoints, 3)
         kpts_flatten = kpts_and_vis[:, :, :2].reshape(-1, 2)
         kpts_flatten_unnormalized = kpts_flatten.copy()
