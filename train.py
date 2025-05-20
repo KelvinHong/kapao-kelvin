@@ -291,8 +291,8 @@ def train(
 
     # Trainloader
     train_loader, dataset = create_dataloader(
-        train_path,
-        labels_dir,
+        "data/datasets/coco/annotations/person_keypoints_train2017_mini.json",
+        "data/datasets/coco/images/train2017",
         imgsz,
         batch_size // WORLD_SIZE,
         gs,
@@ -316,8 +316,8 @@ def train(
     # Process 0
     if RANK in [-1, 0]:
         val_loader = create_dataloader(
-            val_path,
-            labels_dir,
+            "data/datasets/coco/annotations/person_keypoints_val2017_mini.json",
+            "data/datasets/coco/images/val2017",
             imgsz,
             batch_size // WORLD_SIZE,
             gs,

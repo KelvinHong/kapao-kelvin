@@ -13,7 +13,10 @@ from kapao.dataset import (
     read_samples,
     reorder_rectangle_shapes,
     load_and_reshape_image,
+    COCOImage,
+    COCOKeypointDataset,
 )
+import torch
 
 
 @pytest.fixture
@@ -198,3 +201,178 @@ def test_load_and_reshape_image(
 
     assert result_og_shape == original_shape
     assert img.shape[:2] == expected_final_shape
+
+
+class TestDataset:
+    NUM_SAMPLES = 16
+    KP_BBOX = 0.05
+
+    @pytest.fixture
+    def dataset_class(self):
+        return COCOKeypointDataset
+
+    @pytest.fixture
+    def batch_size(self):
+        return 2
+
+    @pytest.fixture
+    def dataset_kwargs(self, batch_size):
+        return {
+            "json_path": "data/datasets/coco/annotations/person_keypoints_val2017_mini.json",
+            "image_dir": "data/datasets/coco/images/val2017",
+            "num_keypoints": 17,
+            "rect": True,
+            "batch_size": batch_size,
+        }
+
+    @pytest.fixture
+    def dataset(self, dataset_class, dataset_kwargs):
+        return dataset_class(**dataset_kwargs)
+
+    def test_init(self, dataset: COCOKeypointDataset):
+        for image in dataset.images.values():
+            assert isinstance(image, COCOImage)
+
+        assert dataset.num_keypoints == 17
+        assert dataset.kp_bbox == self.KP_BBOX
+
+    def test_len(self, dataset: COCOKeypointDataset):
+        assert len(dataset) == self.NUM_SAMPLES
+
+    def test_batch_shapes(self, dataset: COCOKeypointDataset, batch_size):
+        num_shapes = self.NUM_SAMPLES // batch_size
+
+        assert len(dataset.batch_shapes) == num_shapes
+        hw_ratios = [shape[0] / shape[1] for shape in dataset.batch_shapes]
+        assert all(x<=y for x, y in zip(hw_ratios, hw_ratios[1:]))
+
+    @pytest.mark.parametrize(
+        "labels,expected_labels",
+        [
+            (
+                np.zeros((0, 3 * 17 + 5), dtype=np.float32),
+                np.zeros((0, 3 * 17 + 5), dtype=np.float32),
+            ),
+            (   # Pose without keypoints
+                np.array([
+                    [0, 0.3, 0.4, 0.2, 0.1,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0.,],
+                ]),
+                np.array([
+                    [0, 0.3, 0.4, 0.2, 0.1,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0.,],
+                ]),
+            ),
+            (   # Pose with 2 keypoints at keypoint id 2 & 13 in range 1-17.
+                np.array([
+                    [0, 0.3, 0.4, 0.2, 0.1,
+                     0., 0., 0., .1, .2, 1., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0., .1, .5, 2., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0.,],
+                ]),
+                np.array([
+                    [0, 0.3, 0.4, 0.2, 0.1,
+                     0., 0., 0., .1, .2, 1., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0., .1, .5, 2., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0.,],
+                    [2, 0.1, 0.2, 0.05, 0.075,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0.,],
+                    [13, 0.1, 0.5, 0.05, 0.075,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0.,],
+                ]),
+            ),
+            (
+                # 2 poses with keypoints
+                np.array([
+                    [0, 0.3, 0.4, 0.2, 0.1,
+                     0., 0., 0., .1, .2, 1., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0., .1, .5, 2., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0.,],
+                    [0, 0.7, 0.8, 0.1, 0.15,
+                     .4, .3, 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     .5, .5, .5, .1, .1, .3,],
+                ]),
+                np.array([
+                    [0, 0.3, 0.4, 0.2, 0.1,
+                     0., 0., 0., .1, .2, 1., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0., .1, .5, 2., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0.,],
+                    [2, 0.1, 0.2, 0.05, 0.075,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0.,],
+                    [13, 0.1, 0.5, 0.05, 0.075,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0.,],
+                     [0, 0.7, 0.8, 0.1, 0.15,
+                     .4, .3, 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     .5, .5, .5, .1, .1, .3,],
+                     [1, 0.4, 0.3, 0.05, 0.075,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0.,],
+                     [16, 0.5, 0.5, 0.05, 0.075,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0.,],
+                     [17, 0.1, 0.1, 0.05, 0.075,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                     0., 0., 0., 0., 0., 0.,],
+                ]),
+            )
+        ]
+    )
+    def test_expand_to_kp_objects(self, dataset: COCOKeypointDataset, labels, expected_labels):
+        h, w = 200, 300
+        assert np.allclose(dataset._expand_to_kp_objects(labels, h, w), expected_labels)
+
+    @pytest.mark.parametrize(
+        "index", list(range(16)),
+    )
+    def test_getitem(self, dataset: COCOKeypointDataset, index):
+        sample = dataset[index]
+        image: torch.Tensor = sample["image"]
+        bboxes: torch.Tensor = sample["bboxes"]
+        keypoints: torch.Tensor = sample["keypoints"]
+        class_ids: torch.Tensor = sample["class_ids"]
+
+        assert image.ndim == 3
+        assert image.shape[0] == 3
+        assert image.dtype == torch.uint8
+
+        assert bboxes.ndim == 2
+        assert bboxes.shape[1] == 4
+
+        assert keypoints.ndim == 3
+        assert keypoints.shape[1] == dataset.num_keypoints
+        assert keypoints.shape[2] == 3
+
+        assert bboxes.shape[0] == keypoints.shape[0]
+        assert bboxes.shape[0] == class_ids.shape[0]
