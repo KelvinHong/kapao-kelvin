@@ -55,6 +55,7 @@ from utils.torch_utils import (
 from utils.metrics import fitness
 from utils.loggers import Loggers
 from utils.callbacks import Callbacks
+from kapao.optimizer import build_optimizer_schedulers
 
 LOGGER = logging.getLogger(__name__)
 LOCAL_RANK = int(
@@ -199,47 +200,10 @@ def train(
     hyp["weight_decay"] *= batch_size * accumulate / nbs  # scale weight_decay
     LOGGER.info(f"Scaled weight_decay = {hyp['weight_decay']}")
 
-    g0, g1, g2 = [], [], []  # optimizer parameter groups
-    for v in model.modules():
-        if hasattr(v, "bias") and isinstance(v.bias, nn.Parameter):  # bias
-            g2.append(v.bias)
-        if isinstance(v, nn.BatchNorm2d):  # weight (no decay)
-            g0.append(v.weight)
-        elif hasattr(v, "weight") and isinstance(
-            v.weight, nn.Parameter
-        ):  # weight (with decay)
-            g1.append(v.weight)
-
-    if opt.adam:
-        optimizer = Adam(
-            g0, lr=hyp["lr0"], betas=(hyp["momentum"], 0.999)
-        )  # adjust beta1 to momentum
-    else:
-        optimizer = SGD(g0, lr=hyp["lr0"], momentum=hyp["momentum"], nesterov=True)
-
-    optimizer.add_param_group(
-        {"params": g1, "weight_decay": hyp["weight_decay"]}
-    )  # add g1 with weight_decay
-    optimizer.add_param_group({"params": g2})  # add g2 (biases)
-    # if opt.autobalance:
-    #     optimizer.add_param_group({'params': model.loss_coeffs})  # for autobalancing if used
-
-    LOGGER.info(
-        f"{colorstr('optimizer:')} {type(optimizer).__name__} with parameter groups "
-        f"{len(g0)} weight, {len(g1)} weight (no decay), {len(g2)} bias"
-    )
-    del g0, g1, g2
-
-    # Scheduler
-    if opt.linear_lr:
-        lf = (
-            lambda x: (1 - x / (epochs - 1)) * (1.0 - hyp["lrf"]) + hyp["lrf"]
-        )  # linear
-    else:
-        lf = one_cycle(1, hyp["lrf"], epochs)  # cosine 1->hyp['lrf']
-    scheduler = lr_scheduler.LambdaLR(
-        optimizer, lr_lambda=lf
-    )  # plot_lr_scheduler(optimizer, scheduler, epochs)
+    optimizer, scheduler = build_optimizer_schedulers(
+        model, hyp, opt.adam, opt.linear_lr, epochs
+    )  # build optimizer and scheduler
+    lr_function = scheduler.lr_lambdas[0]
 
     # EMA
     ema = ModelEMA(model) if RANK in [-1, 0] else None
@@ -452,7 +416,7 @@ def train(
                         xi,
                         [
                             hyp["warmup_bias_lr"] if j == 2 else 0.0,
-                            x["initial_lr"] * lf(epoch),
+                            x["initial_lr"] * lr_function(epoch),
                         ],
                     )
                     if "momentum" in x:
